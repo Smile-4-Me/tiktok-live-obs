@@ -7,11 +7,14 @@
 #include "manual_credentials_provider.hpp"
 #include "profile.hpp"
 
+#include <QSet>
 #include <QWidget>
 
 #include <vector>
 
+class QAbstractButton;
 class QComboBox;
+class QEvent;
 class QFormLayout;
 class QLabel;
 class QVBoxLayout;
@@ -20,9 +23,13 @@ class LiveObsDock final : public QWidget {
 public:
 	explicit LiveObsDock(QWidget *obs_main_window);
 
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
 	Profile new_profile() const;
 	Profile *selected_profile();
+	Profile *find_profile(const QString &id);
 	void load_profiles();
 	void save_profiles() const;
 	void rebuild_profile_list();
@@ -32,6 +39,9 @@ private:
 	void delete_selected_profile();
 	void save_manual_credentials(const QString &profile_id, QString username, QString url, QString key);
 	void apply_to_aitum(const QString &profile_id, const QString &output_name);
+	void start_linked_aitum_output(const QString &profile_id, const QString &output_name);
+	Profile *choose_profile_for_output(const QString &output_name, const std::vector<Profile *> &profiles);
+	QString output_name_for_aitum_button(const QAbstractButton *button) const;
 	void set_diagnostic(Profile &profile, QString message, bool error = false);
 	QString status_text(const Profile &profile) const;
 	QStringList available_outputs(QString *diagnostic = nullptr) const;
@@ -40,6 +50,7 @@ private:
 	QVBoxLayout *details_layout_ = nullptr;
 	std::vector<Profile> profiles_;
 	int selected_profile_ = -1;
+	QSet<QString> outputs_preparing_;
 	AitumBridge aitum_bridge_;
 	ManualCredentialsProvider manual_provider_;
 };

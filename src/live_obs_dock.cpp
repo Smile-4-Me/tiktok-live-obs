@@ -8,20 +8,28 @@
 #include "plugin_paths.hpp"
 #include "token_store.hpp"
 
+#include <QAbstractButton>
+#include <QApplication>
 #include <QComboBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
+#include <QTimer>
 #include <QUuid>
 #include <QVBoxLayout>
 
 namespace {
+
+constexpr char aitum_output_button_object_name[] = "canvasOutput";
 
 QLabel *heading(const QString &value, QWidget *parent)
 {
@@ -61,6 +69,7 @@ QString state_color(ProfileState state)
 LiveObsDock::LiveObsDock(QWidget *obs_main_window) : aitum_bridge_(obs_main_window, this)
 {
 	TokenStore::set_storage_scope(installation_storage_scope());
+	qApp->installEventFilter(this);
 	load_profiles();
 
 	auto *root = new QVBoxLayout(this);
@@ -108,6 +117,74 @@ Profile *LiveObsDock::selected_profile()
 	if (selected_profile_ < 0 || selected_profile_ >= static_cast<int>(profiles_.size()))
 		return nullptr;
 	return &profiles_[static_cast<size_t>(selected_profile_)];
+}
+
+Profile *LiveObsDock::find_profile(const QString &id)
+{
+	for (Profile &profile : profiles_)
+		if (profile.id == id)
+			return &profile;
+	return nullptr;
+}
+
+bool LiveObsDock::eventFilter(QObject *watched, QEvent *event)
+{
+	if (event->type() != QEvent::MouseButtonRelease)
+		return QWidget::eventFilter(watched, event);
+	auto *button = qobject_cast<QAbstractButton *>(watched);
+	const auto *mouse_event = static_cast<QMouseEvent *>(event);
+	if (!button || mouse_event->button() != Qt::LeftButton ||
+		button->objectName() != QString::fromUtf8(aitum_output_button_object_name))
+		return QWidget::eventFilter(watched, event);
+
+	const QString output_name = output_name_for_aitum_button(button);
+	if (output_name.isEmpty() || button->isChecked())
+		return QWidget::eventFilter(watched, event);
+
+	std::vector<Profile *> configured;
+	for (Profile &profile : profiles_)
+		if (profile.output_name == output_name && manual_provider_.is_configured(profile.id))
+			configured.push_back(&profile);
+	if (configured.empty())
+		return QWidget::eventFilter(watched, event);
+	if (outputs_preparing_.contains(output_name)) {
+		QMessageBox::information(this, text("Plugin.Name"), text("Aitum.AlreadyPreparing"));
+		return true;
+	}
+
+	Profile *profile = configured.size() == 1
+		? configured.front()
+		: choose_profile_for_output(output_name, configured);
+	if (!profile)
+		return true;
+	outputs_preparing_.insert(output_name);
+	start_linked_aitum_output(profile->id, output_name);
+	return true;
+}
+
+QString LiveObsDock::output_name_for_aitum_button(const QAbstractButton *button) const
+{
+	for (const QWidget *candidate = button->parentWidget(); candidate; candidate = candidate->parentWidget()) {
+		const QString name = candidate->objectName();
+		if (!name.isEmpty() && name != QString::fromUtf8(aitum_output_button_object_name))
+			return name;
+	}
+	return {};
+}
+
+Profile *LiveObsDock::choose_profile_for_output(const QString &output_name,
+	const std::vector<Profile *> &profiles)
+{
+	QStringList choices;
+	for (const Profile *profile : profiles)
+		choices.push_back(profile->display_name + QStringLiteral(" (@%1)").arg(profile->tiktok_username));
+	bool accepted = false;
+	const QString choice = QInputDialog::getItem(this, text("Aitum.ProfileChoiceTitle").arg(output_name),
+		text("Aitum.ProfileChoicePrompt").arg(output_name), choices, 0, false, &accepted);
+	if (!accepted)
+		return nullptr;
+	const int index = choices.indexOf(choice);
+	return index >= 0 ? profiles.at(static_cast<size_t>(index)) : nullptr;
 }
 
 void LiveObsDock::load_profiles()
@@ -355,8 +432,8 @@ void LiveObsDock::apply_to_aitum(const QString &profile_id, const QString &outpu
 	set_diagnostic(*profile, text("Aitum.Applying"));
 	show_selected_profile();
 	aitum_bridge_.update_async({session.ingest_url, session.stream_key, output_name}, [this, profile_id](BridgeResult result) {
-		Profile *updated = selected_profile();
-		if (!updated || updated->id != profile_id)
+		Profile *updated = find_profile(profile_id);
+		if (!updated)
 			return;
 		if (result == BridgeResult::Success) {
 			updated->credentials_applied = true;
@@ -367,6 +444,66 @@ void LiveObsDock::apply_to_aitum(const QString &profile_id, const QString &outpu
 		}
 		save_profiles();
 		rebuild_profile_list();
-		show_selected_profile();
+		if (selected_profile() == updated)
+			show_selected_profile();
 	});
+}
+
+void LiveObsDock::start_linked_aitum_output(const QString &profile_id, const QString &output_name)
+{
+	Profile *profile = find_profile(profile_id);
+	if (!profile) {
+		outputs_preparing_.remove(output_name);
+		return;
+	}
+	QString error;
+	const SessionDescriptor session = manual_provider_.session_for(profile_id, &error);
+	if (session.ingest_url.isEmpty()) {
+		set_diagnostic(*profile, error, true);
+		outputs_preparing_.remove(output_name);
+		show_selected_profile();
+		return;
+	}
+
+	set_diagnostic(*profile, text("Aitum.Applying"));
+	if (selected_profile() == profile)
+		show_selected_profile();
+	aitum_bridge_.update_async({session.ingest_url, session.stream_key, output_name},
+		[this, profile_id, output_name](BridgeResult result) {
+			Profile *updated = find_profile(profile_id);
+			if (!updated) {
+				outputs_preparing_.remove(output_name);
+				return;
+			}
+			if (result != BridgeResult::Success) {
+				updated->credentials_applied = false;
+				set_diagnostic(*updated, text("Aitum.ApplyFailed"), true);
+				outputs_preparing_.remove(output_name);
+				save_profiles();
+				rebuild_profile_list();
+				if (selected_profile() == updated)
+					show_selected_profile();
+				return;
+			}
+
+			updated->credentials_applied = true;
+			set_diagnostic(*updated, text("Aitum.StartingOutput"));
+			save_profiles();
+			rebuild_profile_list();
+			if (selected_profile() == updated)
+				show_selected_profile();
+			QTimer::singleShot(250, this, [this, profile_id, output_name] {
+				QString diagnostic;
+				const bool started = aitum_start_output(output_name, &diagnostic);
+				outputs_preparing_.remove(output_name);
+				if (Profile *current = find_profile(profile_id)) {
+					set_diagnostic(*current, started ? text("Aitum.Started")
+						: text("Aitum.StartFailed").arg(diagnostic), !started);
+					save_profiles();
+					rebuild_profile_list();
+					if (selected_profile() == current)
+						show_selected_profile();
+				}
+			});
+		});
 }
