@@ -69,6 +69,12 @@ It is a community project, not a company product. Please read the information be
 
 This private repository is under active development. A dedicated installer and public release will follow once the provider architecture is complete.
 
+The private, localhost-only research work is documented in
+[docs/research/loukious-tiktok-stream-key-generator-analysis.md](docs/research/loukious-tiktok-stream-key-generator-analysis.md).
+It records the external architecture research, the RapidAPI assessment, and
+the explicit boundary that this project does not implement platform-specific
+signing or integrity-bypass behavior.
+
 ## Quick start
 
 1. Open the dock and create or select a profile.
