@@ -345,6 +345,11 @@ small and auditable:
 These checks prove only the local software boundary and loadability. They do
 not validate a TikTok integration, and they must never be presented as such.
 
+The repository also contains `tools/verify-research-boundary.ps1`. It verifies
+the loopback-only endpoint, the two-second heartbeat interval, and the absence
+of platform/media/signing categories from the Research Lab source. Run it from
+the repository root before merging changes to `src/research_lab.*`.
+
 ## Open questions for an authorized future integration
 
 These questions must be answered by official documentation or a written

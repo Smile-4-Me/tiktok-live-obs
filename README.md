@@ -75,6 +75,10 @@ It records the external architecture research, the RapidAPI assessment, and
 the explicit boundary that this project does not implement platform-specific
 signing or integrity-bypass behavior.
 
+Any future external provider must pass the
+[Future Provider Contract](docs/FUTURE_PROVIDER_CONTRACT.md) before it is
+implemented.
+
 ## Quick start
 
 1. Open the dock and create or select a profile.
