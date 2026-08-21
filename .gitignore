@@ -21,7 +21,7 @@
 *.exe
 
 # Local package and test artifacts
-/release/
+/release*/
 /screenshots/private/
 
 # Never commit user configuration or credentials
