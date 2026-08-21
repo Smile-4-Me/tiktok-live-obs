@@ -35,48 +35,11 @@ QString registry_string(HKEY root, const wchar_t *subkey, const wchar_t *value_n
 	return value_result == ERROR_SUCCESS ? QString::fromWCharArray(buffer.constData()) : QString{};
 }
 
-bool uses_legacy_global_plugin_layout()
-{
-	return QDir(module_installation_directory()).exists(QStringLiteral("data/locale"));
-}
-
-bool is_registered_obs_installation()
-{
-	const QString display_icon = registry_string(HKEY_LOCAL_MACHINE,
-		L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OBS Studio",
-		L"DisplayIcon");
-	if (display_icon.isEmpty())
-		return false;
-
-	QDir registered_directory(QFileInfo(display_icon).absolutePath());
-	registered_directory.cdUp();
-	registered_directory.cdUp();
-	const QString registered_path = QFileInfo(registered_directory.absolutePath()).canonicalFilePath();
-	const QString module_path = QFileInfo(module_installation_directory()).canonicalFilePath();
-	return !registered_path.isEmpty() && !module_path.isEmpty()
-		&& QString::compare(registered_path, module_path, Qt::CaseInsensitive) == 0;
-}
-
-bool should_migrate_previous_settings()
-{
-	return uses_legacy_global_plugin_layout() || is_registered_obs_installation();
-}
-
-QString scoped_settings_path(const QString &current_name, const QString &previous_name,
-	const QString &legacy_name)
+QString scoped_settings_path(const QString &name)
 {
 	const QString base = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
 	QDir().mkpath(base);
-	const QString current = QDir(base).filePath(current_name);
-	if (!QFile::exists(current) && should_migrate_previous_settings()) {
-		const QString previous = QDir(base).filePath(previous_name);
-		const QString legacy = QDir(base).filePath(legacy_name);
-		if (QFile::exists(previous))
-			QFile::copy(previous, current);
-		else if (QFile::exists(legacy))
-			QFile::copy(legacy, current);
-	}
-	return current;
+	return QDir(base).filePath(name);
 }
 
 } // namespace
@@ -109,16 +72,12 @@ QString installation_storage_scope()
 
 QString profiles_settings_path()
 {
-	return scoped_settings_path(
-		QStringLiteral("tiktok-live-obs-profiles-%1.ini").arg(installation_storage_scope()),
-		QStringLiteral("tiktok-live-obs-profiles.ini"),
-		QStringLiteral("tiktok-live-obs-bridge-profiles.ini"));
+	return scoped_settings_path(QStringLiteral("tiktok-live-obs-profiles-%1.ini")
+		.arg(installation_storage_scope()));
 }
 
 QString plugin_settings_path()
 {
-	return scoped_settings_path(
-		QStringLiteral("tiktok-live-obs-%1.ini").arg(installation_storage_scope()),
-		QStringLiteral("tiktok-live-obs.ini"),
-		QStringLiteral("tiktok-live-obs-bridge.ini"));
+	return scoped_settings_path(QStringLiteral("tiktok-live-obs-%1.ini")
+		.arg(installation_storage_scope()));
 }

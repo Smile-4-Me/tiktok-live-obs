@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible problem without exposing account secrets.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the plugin. Do not include tokens, stream keys, browser callback codes, private file paths, or unredacted screenshots.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: obs
+    attributes:
+      label: OBS Studio version
+      placeholder: "32.2.1"
+    validations:
+      required: true
+  - type: input
+    id: aitum
+    attributes:
+      label: Aitum version (if relevant)
+      placeholder: "Not installed / version"
+  - type: dropdown
+    id: installation
+    attributes:
+      label: OBS installation type
+      options:
+        - Regular installation
+        - Portable installation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed or redacted tokens, stream keys, usernames, callback codes, and personal paths.
+          required: true

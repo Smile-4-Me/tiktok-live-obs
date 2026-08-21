@@ -21,32 +21,12 @@ QString scoped_target_name(const QString &kind, const QString &profile_id)
 
 QString target_name(const QString &profile_id)
 {
-	return scoped_target_name(QStringLiteral("ProviderToken"), profile_id);
+	return scoped_target_name(QStringLiteral("Streamlabs"), profile_id);
 }
 
 QString live_credentials_target_name(const QString &profile_id)
 {
 	return scoped_target_name(QStringLiteral("LiveCredentials"), profile_id);
-}
-
-QString previous_target_name(const QString &profile_id)
-{
-	return QStringLiteral("TikTokLiveObs/ProviderToken/%1").arg(profile_id);
-}
-
-QString previous_live_credentials_target_name(const QString &profile_id)
-{
-	return QStringLiteral("TikTokLiveObs/LiveCredentials/%1").arg(profile_id);
-}
-
-QString legacy_target_name(const QString &profile_id)
-{
-	return QStringLiteral("TikTokLiveObsBridge/Streamlabs/%1").arg(profile_id);
-}
-
-QString legacy_live_credentials_target_name(const QString &profile_id)
-{
-	return QStringLiteral("TikTokLiveObsBridge/LiveCredentials/%1").arg(profile_id);
 }
 
 bool save_credential(const QString &target_name, const QByteArray &value, const wchar_t *username)
@@ -89,20 +69,13 @@ void TokenStore::set_storage_scope(const QString &scope)
 
 bool TokenStore::save(const QString &profile_id, const QString &token)
 {
-	return save_credential(target_name(profile_id), token.toUtf8(), L"TikTok LIVE provider token");
+	return save_credential(target_name(profile_id), token.toUtf8(), L"Streamlabs OAuth Token");
 }
 
 QString TokenStore::load(const QString &profile_id)
 {
 	const QByteArray current = load_credential(target_name(profile_id));
-	if (!current.isEmpty())
-		return QString::fromUtf8(current);
-	QByteArray legacy = load_credential(previous_target_name(profile_id));
-	if (legacy.isEmpty())
-		legacy = load_credential(legacy_target_name(profile_id));
-	if (!legacy.isEmpty())
-		save_credential(target_name(profile_id), legacy, L"TikTok LIVE provider token");
-	return QString::fromUtf8(legacy);
+	return QString::fromUtf8(current);
 }
 
 bool TokenStore::save_live_credentials(const QString &profile_id, const LiveCredentials &credentials)
@@ -115,14 +88,7 @@ bool TokenStore::save_live_credentials(const QString &profile_id, const LiveCred
 
 LiveCredentials TokenStore::load_live_credentials(const QString &profile_id)
 {
-	QByteArray value = load_credential(live_credentials_target_name(profile_id));
-	if (value.isEmpty()) {
-		value = load_credential(previous_live_credentials_target_name(profile_id));
-		if (value.isEmpty())
-			value = load_credential(legacy_live_credentials_target_name(profile_id));
-		if (!value.isEmpty())
-			save_credential(live_credentials_target_name(profile_id), value, L"TikTok LIVE credentials");
-	}
+	const QByteArray value = load_credential(live_credentials_target_name(profile_id));
 	const QJsonDocument document = QJsonDocument::fromJson(value);
 	const QJsonObject object = document.object();
 	return {object.value(QStringLiteral("server")).toString(), object.value(QStringLiteral("key")).toString()};

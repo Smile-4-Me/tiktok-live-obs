@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.iss text eol=crlf
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
+*.png binary
+*.gif binary
+*.ico binary
