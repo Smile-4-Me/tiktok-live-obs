@@ -61,6 +61,7 @@ bool ResearchLab::start(const QString &session_id, QString *error)
 	session_id_ = session_id;
 	heartbeat_sequence_ = 0;
 	initial_heartbeat_confirmed_ = false;
+	++generation_;
 	heartbeat_timer_->start();
 	send_heartbeat();
 	return true;
@@ -68,6 +69,10 @@ bool ResearchLab::start(const QString &session_id, QString *error)
 
 void ResearchLab::stop()
 {
+	// Replies are asynchronous. Advancing the generation makes every callback
+	// from the previous local session a no-op, even if a new session starts
+	// before the old reply is delivered.
+	++generation_;
 	heartbeat_timer_->stop();
 	if (server_->isListening())
 		server_->close();
@@ -95,6 +100,7 @@ void ResearchLab::send_heartbeat()
 {
 	if (!active())
 		return;
+	const quint64 heartbeat_generation = generation_;
 
 	QJsonObject payload;
 	payload.insert(QStringLiteral("session"), session_id_);
@@ -103,11 +109,11 @@ void ResearchLab::send_heartbeat()
 	QNetworkRequest request(QUrl(QStringLiteral("http://127.0.0.1:%1/heartbeat").arg(server_->serverPort())));
 	request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 	QNetworkReply *reply = network_->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-	connect(reply, &QNetworkReply::finished, this, [this, reply] {
+	connect(reply, &QNetworkReply::finished, this, [this, reply, heartbeat_generation] {
 		const bool succeeded = reply->error() == QNetworkReply::NoError;
 		const QString error = reply->errorString();
 		reply->deleteLater();
-		if (!active())
+		if (!active() || heartbeat_generation != generation_)
 			return;
 		if (!succeeded) {
 			report_status(false, error);
@@ -124,9 +130,13 @@ void ResearchLab::accept_connections()
 {
 	while (QTcpSocket *socket = server_->nextPendingConnection()) {
 		connect(socket, &QTcpSocket::readyRead, socket, [socket] {
-			const QByteArray request = socket->readAll();
+			QByteArray request = socket->property("research_request_buffer").toByteArray();
+			request.append(socket->readAll());
 			if (!request.contains("\r\n\r\n"))
+			{
+				socket->setProperty("research_request_buffer", request);
 				return;
+			}
 			const QByteArray body = QByteArrayLiteral("{\"ok\":true,\"service\":\"research-lab\"}");
 			socket->write(json_response(body));
 			socket->disconnectFromHost();

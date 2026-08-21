@@ -334,6 +334,11 @@ small and auditable:
 | Dock integration | `src/bridge_dock.*` | Shows provider-specific UI, stores local test credentials in the existing secret store, and tears down the harness. | Research sessions are labelled as local research, never as confirmed TikTok LIVE sessions. |
 | Restart recovery | `src/bridge_dock_profiles.cpp` | Clears an old `research-local` reservation on the next OBS start. | A listener is not assumed to survive an OBS restart. |
 
+The harness also uses a monotonically increasing generation number. A reply
+from a stopped session is ignored if a later session has already started. This
+is required because local network callbacks, like any asynchronous callback,
+can outlive the UI event that initiated them.
+
 ### Build verification record
 
 | Date | Check | Result |

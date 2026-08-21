@@ -43,5 +43,6 @@ private:
 	StatusCallback status_callback_;
 	QString session_id_;
 	quint64 heartbeat_sequence_ = 0;
+	quint64 generation_ = 0;
 	bool initial_heartbeat_confirmed_ = false;
 };
