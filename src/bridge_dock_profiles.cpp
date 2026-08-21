@@ -363,13 +363,19 @@ void BridgeDock::build_login_step(const Profile &profile)
 				current->can_go_live = false;
 				current->live = false;
 				current->live_id.clear();
-				current->application_status.clear();
-				current->diagnostic.clear();
-				save_profiles();
+			current->application_status.clear();
+			current->diagnostic.clear();
+			save_profiles();
+			// This handler runs from the combo box that belongs to the current
+			// detail view. Defer rebuilding the view until Qt has returned from
+			// currentIndexChanged; deleting it here would destroy the signal sender
+			// while Qt is still dispatching its event.
+			QTimer::singleShot(0, this, [this] {
 				rebuild_profile_list();
 				show_selected_profile();
-			}
-		});
+			});
+		}
+	});
 
 		if (ProviderRegistry::is_manual(profile.provider_id)) {
 			layout->addWidget(info_card(text("Manual.Description"), group));
