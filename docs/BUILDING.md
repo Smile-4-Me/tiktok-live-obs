@@ -54,3 +54,19 @@ Adjust the executable path if Inno Setup is installed elsewhere. The output is w
 3. Build the installer from those artifacts.
 4. Run the research boundary check: `& .\tools\verify-research-boundary.ps1`.
 5. Do not distribute a build containing an experimental provider without an authorized integration and a completed [Future Provider Contract](FUTURE_PROVIDER_CONTRACT.md) review.
+
+## Run the local research smoke test
+
+The smoke test is opt-in and has no external network dependency. It starts the
+loopback-only Research Lab, confirms its first heartbeat, then confirms clean
+shutdown:
+
+```powershell
+cmake -S . -B build-tests -G "Visual Studio 17 2022" -A x64 `
+  -DTIKTOK_LIVE_OBS_BUILD_TESTS=ON `
+  -DOBS_SOURCE_DIR="C:\path\to\obs-studio" `
+  -DQT_HEADERS_DIR="C:\path\to\qt\include" `
+  -DQT_IMPORT_LIB_DIR="C:\path\to\qt\lib"
+cmake --build build-tests --config Release --target tiktok-live-obs-research-smoke
+ctest --test-dir build-tests -C Release --output-on-failure
+```

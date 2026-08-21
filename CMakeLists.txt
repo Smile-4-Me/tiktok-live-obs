@@ -16,6 +16,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(TIKTOK_LIVE_OBS_BUILD_TESTS "Build local developer tests" OFF)
+
 include(FetchContent)
 
 # The plugin owns its HTTPS dependency. Do not rely on TLS plugins or libcurl
@@ -119,3 +121,25 @@ add_custom_command(TARGET tiktok-live-obs POST_BUILD
     "${CMAKE_CURRENT_SOURCE_DIR}/data"
     "$<TARGET_FILE_DIR:tiktok-live-obs>/data"
 )
+
+if(TIKTOK_LIVE_OBS_BUILD_TESTS)
+  enable_testing()
+  add_executable(tiktok-live-obs-research-smoke
+    tests/research_lab_smoke.cpp
+    src/research_lab.cpp
+    src/research_lab.hpp
+  )
+  target_include_directories(tiktok-live-obs-research-smoke PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${QT_HEADERS_DIR}"
+    "${QT_HEADERS_DIR}/QtCore"
+    "${QT_HEADERS_DIR}/QtNetwork"
+  )
+  target_link_libraries(tiktok-live-obs-research-smoke PRIVATE
+    "${QT_IMPORT_LIB_DIR}/Qt6Core.lib"
+    "${QT_IMPORT_LIB_DIR}/Qt6Network.lib"
+  )
+  target_compile_definitions(tiktok-live-obs-research-smoke PRIVATE UNICODE _UNICODE)
+  target_compile_options(tiktok-live-obs-research-smoke PRIVATE /Zc:__cplusplus /utf-8)
+  add_test(NAME local-research-harness COMMAND tiktok-live-obs-research-smoke)
+endif()
