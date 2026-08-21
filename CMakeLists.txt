@@ -142,4 +142,22 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
   target_compile_definitions(tiktok-live-obs-research-smoke PRIVATE UNICODE _UNICODE)
   target_compile_options(tiktok-live-obs-research-smoke PRIVATE /Zc:__cplusplus /utf-8)
   add_test(NAME local-research-harness COMMAND tiktok-live-obs-research-smoke)
+
+  add_executable(tiktok-live-obs-token-store-smoke
+    tests/token_store_smoke.cpp
+    src/token_store.cpp
+    src/token_store.hpp
+  )
+  target_include_directories(tiktok-live-obs-token-store-smoke PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${QT_HEADERS_DIR}"
+    "${QT_HEADERS_DIR}/QtCore"
+  )
+  target_link_libraries(tiktok-live-obs-token-store-smoke PRIVATE
+    "${QT_IMPORT_LIB_DIR}/Qt6Core.lib"
+    advapi32
+  )
+  target_compile_definitions(tiktok-live-obs-token-store-smoke PRIVATE UNICODE _UNICODE)
+  target_compile_options(tiktok-live-obs-token-store-smoke PRIVATE /Zc:__cplusplus /utf-8)
+  add_test(NAME token-store-harness COMMAND tiktok-live-obs-token-store-smoke)
 endif()

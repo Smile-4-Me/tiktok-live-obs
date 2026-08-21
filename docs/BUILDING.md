@@ -58,9 +58,10 @@ Adjust the executable path if Inno Setup is installed elsewhere. The output is w
 
 ## Run the local research smoke test
 
-The smoke test is opt-in and has no external network dependency. It starts the
-loopback-only Research Lab, confirms its first heartbeat, then confirms clean
-shutdown:
+The smoke tests are opt-in and have no external network dependency. They start
+the loopback-only Research Lab, confirm its first heartbeat and clean shutdown,
+then verify a temporary Windows Credential Manager record can be saved, read,
+and removed without touching user credentials:
 
 ```powershell
 cmake -S . -B build-tests -G "Visual Studio 17 2022" -A x64 `
