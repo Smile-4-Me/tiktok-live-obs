@@ -1,8 +1,12 @@
-# TikTok Live OBS Bridge v1.0.0
+# Historical TikTok Live OBS Bridge v1.0.0 Notes
+
+> This file is retained only as historical material from the predecessor
+> project. It does not describe the private TikTok Live OBS repository or an
+> upcoming release.
 
 ## First release
 
-TikTok Live OBS Bridge brings the TikTok LIVE session workflow into an OBS dock. It can manage multiple local profiles, prepare a LIVE session through Streamlabs, and optionally update an Aitum Stream Suite output with the generated stream URL and key.
+TikTok Live OBS Bridge brought the TikTok LIVE session workflow into an OBS dock. It could manage multiple local profiles, prepare a LIVE session through Streamlabs, and optionally update an Aitum Stream Suite output with the generated stream URL and key.
 
 ### Highlights
 

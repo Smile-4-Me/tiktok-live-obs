@@ -7,7 +7,9 @@ flowchart LR
   OBS["OBS Studio"] --> Entry["module.cpp\nOBS module entry"]
   Entry --> Dock["BridgeDock\nDock coordination"]
   Dock --> Profiles["Profile UI and persistence"]
-  Dock --> Sessions["LIVE session lifecycle"]
+  Dock --> Providers["Provider selection"]
+  Providers --> Sessions["LIVE session lifecycle"]
+  Providers --> Research["ResearchLab\nlocalhost-only harness"]
   Dock --> Aitum["AitumBridge / Aitum outputs"]
   Profiles --> Secrets["TokenStore\nWindows Credential Manager"]
   Sessions --> Streamlabs["StreamlabsClient\nHTTPS via curl"]
@@ -23,7 +25,9 @@ flowchart LR
 | Module entry | `module.cpp` | Registers and removes the OBS dock. |
 | Dock coordination | `bridge_dock.cpp`, `bridge_dock.hpp` | Aitum event interception, one-click start handling, output/account selection rules. |
 | Profile UI | `bridge_dock_profiles.cpp`, `profile.hpp`, `profile_row.*` | Profile list, login/access state, persisted non-secret metadata. |
-| Stream UI and lifecycle | `bridge_dock_streams.cpp` | Metadata input, LIVE creation/end, Aitum update, output verification, recovery. |
+| Stream UI and lifecycle | `bridge_dock_streams.cpp` | Metadata input, provider lifecycle, Aitum update, output verification, recovery. |
+| Provider selection | `provider_registry.*` | Stable provider identifiers and common capability decisions. |
+| Local research harness | `research_lab.*` | A private localhost-only heartbeat test; no TikTok connection or media handling. |
 | Streamlabs transport | `streamlabs_client.*`, `streamlabs_desktop.*` | HTTPS requests and opt-in local Streamlabs Desktop token discovery. |
 | Aitum integration | `aitum_bridge.*`, `aitum_outputs.*` | Aitum vendor requests and settings-dialog update path. |
 | Platform boundaries | `plugin_paths.*`, `token_store.*`, `localization.*` | Windows installation scoping, Credential Manager, OBS locale selection. |
@@ -36,6 +40,7 @@ flowchart LR
 4. Aitum's accepted start request is not treated as proof of an active output; the output status is verified.
 5. Tokens and generated credentials never enter the profile INI file or log output.
 6. Each OBS installation has its own configuration scope; updates at the same path retain that scope.
+7. The `research-local` provider never represents a local test as a confirmed TikTok LIVE session.
 
 ## Change guidance
 

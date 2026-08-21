@@ -2,7 +2,7 @@
 
 ## Local-only design
 
-TikTok Live OBS Bridge has no project-owned backend, telemetry service, analytics endpoint, update service, or account database. The plugin communicates directly with the Streamlabs services needed for the actions you request.
+TikTok Live OBS has no project-owned backend, telemetry service, analytics endpoint, update service, or account database. The plugin communicates directly with the Streamlabs services needed for the actions you request. Its private Research Lab provider uses `127.0.0.1` only.
 
 ## What is stored locally
 
@@ -17,8 +17,8 @@ The plugin stores local profile metadata and preferences in the current Windows 
 Files are scoped using a hash of the physical OBS installation path, for example:
 
 ```text
-tiktok-live-obs-bridge-profiles-<installation-id>.ini
-tiktok-live-obs-bridge-<installation-id>.ini
+tiktok-live-obs-profiles-<installation-id>.ini
+tiktok-live-obs-<installation-id>.ini
 ```
 
 These INI files are plain text. They can include profile display names, TikTok usernames returned by Streamlabs, selected Aitum output names, titles, category selections, and session state. Treat them as private configuration and do not publish them.
@@ -44,6 +44,10 @@ When requested through the dock, the plugin makes HTTPS requests to Streamlabs t
 For browser login, it temporarily runs a local callback listener and opens the Streamlabs/TikTok login flow in the user's browser. The browser callback is local to the computer.
 
 The plugin does not upload configuration or credentials to a server controlled by this project.
+
+The Research Lab provider does not contact TikTok or any external service. It
+starts an ephemeral loopback listener and sends a generic local heartbeat to
+that listener every two seconds while the test session is active.
 
 ## Removing data
 

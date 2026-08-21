@@ -26,13 +26,13 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
 ## Build
 
 ```powershell
-cmake --build build --config Release --target tiktok-live-obs-bridge
+cmake --build build --config Release --target tiktok-live-obs
 ```
 
 The result is written to:
 
 ```text
-dist\tiktok-live-obs-bridge.dll
+dist\tiktok-live-obs.dll
 dist\data\locale\de-DE.ini
 dist\data\locale\en-US.ini
 ```
@@ -52,5 +52,5 @@ Adjust the executable path if Inno Setup is installed elsewhere. The output is w
 1. Rebuild from a clean build directory.
 2. Confirm the DLL and both locale files exist.
 3. Build the installer from those artifacts.
-4. Run the release checklist in [RELEASING.md](../RELEASING.md).
-5. Publish the source commit and its binary from the same tagged revision.
+4. Run the research boundary check: `& .\tools\verify-research-boundary.ps1`.
+5. Do not distribute a build containing an experimental provider without an authorized integration and a completed [Future Provider Contract](FUTURE_PROVIDER_CONTRACT.md) review.

@@ -1,4 +1,4 @@
-# Installing TikTok Live OBS Bridge
+# Installing TikTok Live OBS
 
 ## Supported installation types
 
@@ -14,9 +14,9 @@ The installer always displays the OBS folder selection page. Choose the **root O
 For the chosen OBS root, the installer adds only:
 
 ```text
-obs-plugins\64bit\tiktok-live-obs-bridge.dll
-data\obs-plugins\tiktok-live-obs-bridge\locale\de-DE.ini
-data\obs-plugins\tiktok-live-obs-bridge\locale\en-US.ini
+obs-plugins\64bit\tiktok-live-obs.dll
+data\obs-plugins\tiktok-live-obs\locale\de-DE.ini
+data\obs-plugins\tiktok-live-obs\locale\en-US.ini
 ```
 
 It does not edit OBS profiles, scene collections, Aitum configuration files, or other plugins.
@@ -43,14 +43,14 @@ If the OBS folder or plugin files were manually deleted first, use the entry in 
 Manual installation is intended for advanced users. Close OBS, then copy:
 
 ```text
-tiktok-live-obs-bridge.dll
+tiktok-live-obs.dll
   → <OBS root>\obs-plugins\64bit\
 
 data\locale\de-DE.ini
-  → <OBS root>\data\obs-plugins\tiktok-live-obs-bridge\locale\de-DE.ini
+  → <OBS root>\data\obs-plugins\tiktok-live-obs\locale\de-DE.ini
 
 data\locale\en-US.ini
-  → <OBS root>\data\obs-plugins\tiktok-live-obs-bridge\locale\en-US.ini
+  → <OBS root>\data\obs-plugins\tiktok-live-obs\locale\en-US.ini
 ```
 
-Restart OBS and open **Docks → TikTok Live OBS Bridge**.
+Restart OBS and open **Docks → TikTok Live OBS**.

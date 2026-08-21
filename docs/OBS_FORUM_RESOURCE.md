@@ -2,7 +2,7 @@
 
 ## Title
 
-TikTok Live OBS Bridge — TikTok LIVE sessions for OBS and Aitum
+TikTok Live OBS — TikTok LIVE sessions for OBS and Aitum
 
 ## Short description
 
@@ -10,7 +10,7 @@ Create TikTok LIVE sessions from an OBS dock, optionally send the generated stre
 
 ## Full description
 
-TikTok Live OBS Bridge is a free, open-source OBS Studio plugin for Windows. It keeps the TikTok LIVE session workflow close to OBS: connect a Streamlabs TikTok account, select an Aitum output if you use Aitum, create the session, and start the output as usual.
+TikTok Live OBS is a private OBS Studio development project for Windows. It keeps the existing Streamlabs/Aitum workflow close to OBS while building a provider architecture for future, authorized integrations.
 
 It can also be used without Aitum. In manual mode, the dock shows the generated stream URL and key so you can use them in another compatible streaming setup.
 
@@ -22,7 +22,8 @@ It can also be used without Aitum. In manual mode, the dock shows the generated 
 - Optional stream title, game category, and 18+ request.
 - Aitum output selection, automatic credential handoff, and one-click preparation when starting an Aitum output.
 - Safeguards against two profiles using the same TikTok account or output at the same time.
-- Manual mode without Aitum.
+- Manual credentials from an authorized source, with or without Aitum.
+- A private localhost-only Research Lab that verifies local lifecycle timing without contacting TikTok or altering media.
 - German and English UI.
 
 ### Requirements
@@ -38,14 +39,15 @@ It can also be used without Aitum. In manual mode, the dock shows the generated 
 2. Run the installer as administrator.
 3. Choose the root folder of the OBS installation you want to extend. Portable installations are supported.
 4. Restart OBS Studio.
-5. Open **Docks → TikTok Live OBS Bridge**.
+5. Open **Docks → TikTok Live OBS**.
 
 ### Notes and limitations
 
 - This is an independent project and is not affiliated with TikTok, Streamlabs, Aitum, or OBS Studio.
 - The used Streamlabs/TikTok flow is not a public TikTok API contract. It may change, be restricted, or stop working.
 - Please follow the applicable platform rules and use the plugin at your own risk.
-- v1.0.0 supports Windows only.
+- The repository is currently private and not a public distribution.
+- The Research Lab is not a TikTok integration and does not create or validate external LIVE sessions.
 
 ### Support and source
 
