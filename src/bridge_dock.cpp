@@ -31,10 +31,20 @@ constexpr char aitum_output_button_object_name[] = "canvasOutput";
 } // namespace
 
 BridgeDock::BridgeDock(QWidget *obs_main_window)
-		: QWidget(obs_main_window), bridge_(obs_main_window, this), streamlabs_(this)
+		: QWidget(obs_main_window), bridge_(obs_main_window, this), streamlabs_(this), research_lab_(this)
 	{
 		setObjectName(QStringLiteral("TikTokLiveObsDockContents"));
 		TokenStore::set_storage_scope(installation_storage_scope());
+	research_lab_.set_status_callback([this](const QString &profile_id, bool healthy, const QString &detail) {
+		Profile *profile = find_profile(profile_id);
+		if (!profile || !ProviderRegistry::is_research(profile->provider_id))
+			return;
+		profile->diagnostic = healthy ? text("Research.HeartbeatActive")
+			: text("Research.HeartbeatFailed").arg(detail);
+		profile->diagnostic_error = !healthy;
+			save_profiles();
+			refresh_profile_ui(profile_id);
+		});
 		build_ui();
 		load_profiles();
 		if (profiles_.empty())

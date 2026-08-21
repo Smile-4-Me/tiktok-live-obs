@@ -280,8 +280,8 @@ harness useful independently of TikTok.
 
 ## Local Research Provider specification
 
-The next private milestone is a `research-local` provider. It has no TikTok
-integration and no external network dependency.
+The `research-local` provider is implemented as a private development aid. It
+has no TikTok integration and no external network dependency.
 
 ### Inputs
 
@@ -306,8 +306,8 @@ integration and no external network dependency.
 3. Any local failure is visible in the profile diagnostic and never reported
    as a successful external LIVE.
 4. Stopping a session stops timers and local listeners idempotently.
-5. OBS restart clears the local research reservation unless an observable
-   local test transport is still configured and healthy.
+5. OBS restart clears the local research reservation. The listener is
+   intentionally ephemeral and is never restored as a presumed external LIVE.
 6. No packets are sent to TikTok by this provider.
 
 ## Validation matrix
@@ -345,4 +345,3 @@ Repeat or amend this record when any of the following changes:
 - OBS changes the relevant frontend, output, or Qt API;
 - Aitum changes its output UI contract; or
 - this project considers any non-local transport provider.
-

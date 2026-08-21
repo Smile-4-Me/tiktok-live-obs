@@ -108,11 +108,12 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		add_live_status(form, profile, group);
 		detail_layout_->addWidget(group);
 
-		const bool manual_provider = ProviderRegistry::is_manual(profile.provider_id);
+		const bool local_provider = ProviderRegistry::uses_local_credentials(profile.provider_id);
+		const bool research_provider = ProviderRegistry::is_research(profile.provider_id);
 		auto *go_live = new QPushButton(
-			text(manual_provider ? "Manual.Start" : "Stream.Generate"), detail_container_);
+			text(research_provider ? "Research.Start" : (local_provider ? "Manual.Start" : "Stream.Generate")), detail_container_);
 		auto *end_live = new QPushButton(
-			text(manual_provider ? "Manual.End" : "Stream.End"), detail_container_);
+			text(research_provider ? "Research.End" : (local_provider ? "Manual.End" : "Stream.End")), detail_container_);
 		go_live->setEnabled(!profile.preparing && !profile.live && !profile.recovering);
 		end_live->setEnabled(profile.live && !profile.ending && !profile.recovering);
 		connect(go_live, &QPushButton::clicked, this, [this] { start_selected_live(); });
@@ -230,11 +231,13 @@ void BridgeDock::end_unstarted_aitum_session(const QString &profile_id, const QS
 	{
 		Profile *profile = find_profile(profile_id);
 		if (!profile || !profile->live ||
-			(!ProviderRegistry::is_manual(profile->provider_id) && profile->live_id.isEmpty())) {
+			(!ProviderRegistry::uses_local_credentials(profile->provider_id) && profile->live_id.isEmpty())) {
 			outputs_preparing_.remove(output_name);
 			return;
 		}
-		if (ProviderRegistry::is_manual(profile->provider_id)) {
+		if (ProviderRegistry::uses_local_credentials(profile->provider_id)) {
+			if (ProviderRegistry::is_research(profile->provider_id))
+				research_lab_.stop();
 			clear_live_session(*profile);
 			profile->diagnostic = text("Diagnostic.OutputNotActiveEnded");
 			profile->diagnostic_error = true;
@@ -337,7 +340,7 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 				outputs_preparing_.remove(profile->output_name);
 			return;
 		}
-		if (ProviderRegistry::is_manual(profile->provider_id)) {
+		if (ProviderRegistry::uses_local_credentials(profile->provider_id)) {
 			const LiveCredentials credentials = TokenStore::load_live_credentials(profile->id);
 			if (credentials.server.isEmpty() || credentials.key.isEmpty()) {
 				show_transient_error(text("Manual.MissingCredentials"));
@@ -345,11 +348,22 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 					outputs_preparing_.remove(profile->output_name);
 				return;
 			}
+			const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
+			if (research_provider) {
+				QString local_error;
+				if (!research_lab_.start(profile->id, &local_error)) {
+					show_transient_error(text("Research.StartFailed").arg(local_error));
+					if (start_aitum_output)
+						outputs_preparing_.remove(profile->output_name);
+					return;
+				}
+			}
 			profile->preparing = true;
 			profile->live = true;
 			profile->stream_server = credentials.server;
 			profile->stream_key = credentials.key;
-			profile->diagnostic = start_aitum_output ? text("Diagnostic.UpdatingAitum") : text("Manual.SessionReady");
+			profile->diagnostic = start_aitum_output ? text("Diagnostic.UpdatingAitum")
+				: text(research_provider ? "Research.SessionReady" : "Manual.SessionReady");
 			profile->diagnostic_error = false;
 			const QString manual_profile_id = profile->id;
 			const QString manual_output_name = profile->output_name;
@@ -375,6 +389,8 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 					}
 					current->preparing = false;
 					if (result != BridgeResult::Success) {
+						if (ProviderRegistry::is_research(current->provider_id))
+							research_lab_.stop();
 						clear_live_session(*current);
 						current->diagnostic = text("Diagnostic.Failed").arg(text("Error.AitumUpdateFailed"));
 						current->diagnostic_error = true;
@@ -394,6 +410,8 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 						if (!started) {
 							outputs_preparing_.remove(manual_output_name);
 							if (Profile *failed = find_profile(manual_profile_id)) {
+								if (ProviderRegistry::is_research(failed->provider_id))
+									research_lab_.stop();
 								clear_live_session(*failed);
 								failed->diagnostic = text("OneClick.StartFailed").arg(diagnostic);
 								failed->diagnostic_error = true;
@@ -567,9 +585,12 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 		Profile *profile = find_profile(profile_id);
 		if (!profile || !profile->live || profile->ending || profile->recovering)
 			return;
-		if (ProviderRegistry::is_manual(profile->provider_id)) {
+		if (ProviderRegistry::uses_local_credentials(profile->provider_id)) {
+			const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
+			if (research_provider)
+				research_lab_.stop();
 			clear_live_session(*profile);
-			profile->diagnostic = text("Manual.SessionEnded");
+			profile->diagnostic = text(research_provider ? "Research.SessionEnded" : "Manual.SessionEnded");
 			profile->diagnostic_error = false;
 			save_profiles();
 			refresh_profile_ui(profile_id);

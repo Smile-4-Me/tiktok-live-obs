@@ -6,6 +6,7 @@
 #include "aitum_bridge.hpp"
 #include "profile.hpp"
 #include "provider_registry.hpp"
+#include "research_lab.hpp"
 #include "streamlabs_client.hpp"
 
 #include <QSet>
@@ -70,7 +71,7 @@ private:
 	void show_aitum_missing_notice();
 
 	void verify_token_for_profile(const QString &profile_id, const QString &token);
-	void save_manual_credentials(const QString &profile_id, const QString &username, const QString &server,
+	void save_local_credentials(const QString &profile_id, const QString &username, const QString &server,
 		const QString &key);
 	void refresh_selected_account();
 	void show_transient_error(const QString &message);
@@ -101,4 +102,5 @@ private:
 	int selected_profile_ = -1;
 	AitumBridge bridge_;
 	StreamlabsClient streamlabs_;
+	ResearchLab research_lab_;
 };

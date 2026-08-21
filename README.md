@@ -78,10 +78,10 @@ signing or integrity-bypass behavior.
 ## Quick start
 
 1. Open the dock and create or select a profile.
-2. On the first page, choose **Streamlabs** or **Manual** as the provider.
-3. For Streamlabs, connect the TikTok account as before and complete PC LIVE approval if necessary. For Manual, enter credentials supplied through an authorized source.
+2. On the first page, choose **Streamlabs**, **Manual**, or the private **Research Lab (localhost)** provider.
+3. For Streamlabs, connect the TikTok account as before and complete PC LIVE approval if necessary. For Manual, enter credentials supplied through an authorized source. Research Lab is a local-only development tool and does not contact TikTok or alter media.
 4. Choose an Aitum output, or leave the output in **Manual usage** mode.
-5. Add optional stream metadata. Streamlabs creates the LIVE session; Manual applies the supplied credentials.
+5. Add optional stream metadata. Streamlabs creates the LIVE session; Manual applies the supplied credentials; Research Lab starts only its local heartbeat mock.
 6. With Aitum, start the selected output as usual. Without Aitum, copy the configured credentials into your streaming software.
 7. End the LIVE session or local manual reservation in the dock when the stream is over.
 

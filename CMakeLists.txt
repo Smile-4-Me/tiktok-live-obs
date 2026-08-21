@@ -71,6 +71,8 @@ add_library(tiktok-live-obs MODULE
 	 src/profile.hpp
 	 src/profile_row.cpp
 	 src/profile_row.hpp
+	 src/research_lab.cpp
+	 src/research_lab.hpp
   src/streamlabs_client.cpp
   src/streamlabs_client.hpp
 	 src/streamlabs_desktop.cpp

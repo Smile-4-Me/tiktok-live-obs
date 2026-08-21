@@ -255,9 +255,9 @@ void BridgeDock::clear_live_session(Profile &profile)
 		profile.live_id.clear();
 		profile.stream_server.clear();
 		profile.stream_key.clear();
-		// Manually entered credentials are long-lived user configuration, not a
+		// Locally entered credentials are long-lived user configuration, not a
 		// generated one-time session. Keep them available for the next stream.
-		if (!ProviderRegistry::is_manual(profile.provider_id))
+		if (!ProviderRegistry::uses_local_credentials(profile.provider_id))
 			TokenStore::remove_live_credentials(profile.id);
 	}
 
@@ -282,6 +282,13 @@ void BridgeDock::reconcile_previous_sessions()
 			profile.session_uncertain = false;
 		profile.diagnostic = text("Diagnostic.RecoveryChecking");
 		profile.diagnostic_error = false;
+		if (ProviderRegistry::is_research(profile.provider_id)) {
+			// The localhost listener is deliberately ephemeral. Never restore its
+			// reservation after OBS has restarted.
+			clear_live_session(profile);
+			profile.diagnostic = text("Research.RecoveryCleared");
+			continue;
+		}
 		if (ProviderRegistry::is_manual(profile.provider_id)) {
 			// Manual credentials do not expose a remote session API. After an OBS restart,
 			// use Aitum's observable output state as the source of truth and never keep a
@@ -377,8 +384,9 @@ void BridgeDock::build_login_step(const Profile &profile)
 		}
 	});
 
-		if (ProviderRegistry::is_manual(profile.provider_id)) {
-			layout->addWidget(info_card(text("Manual.Description"), group));
+		if (ProviderRegistry::uses_local_credentials(profile.provider_id)) {
+			const bool research_provider = ProviderRegistry::is_research(profile.provider_id);
+			layout->addWidget(info_card(text(research_provider ? "Research.Description" : "Manual.Description"), group));
 			auto *manual_form = new QFormLayout();
 			auto *username = new QLineEdit(group);
 			username->setPlaceholderText(text("Manual.UsernamePlaceholder"));
@@ -391,9 +399,9 @@ void BridgeDock::build_login_step(const Profile &profile)
 			manual_form->addRow(text("Manual.Server"), server);
 			manual_form->addRow(text("Manual.Key"), key);
 			layout->addLayout(manual_form);
-			auto *save = new QPushButton(text("Manual.Save"), group);
+			auto *save = new QPushButton(text(research_provider ? "Research.Save" : "Manual.Save"), group);
 			connect(save, &QPushButton::clicked, this, [this, profile_id, username, server, key] {
-				save_manual_credentials(profile_id, username->text(), server->text(), key->text());
+				save_local_credentials(profile_id, username->text(), server->text(), key->text());
 			});
 			layout->addWidget(save);
 			detail_layout_->addWidget(group);
@@ -460,26 +468,27 @@ void BridgeDock::build_account_step(const Profile &profile)
 		detail_layout_->addWidget(group);
 	}
 
-void BridgeDock::save_manual_credentials(const QString &profile_id, const QString &username,
+void BridgeDock::save_local_credentials(const QString &profile_id, const QString &username,
 	const QString &server, const QString &key)
 {
 	Profile *profile = find_profile(profile_id);
-	if (!profile || !ProviderRegistry::is_manual(profile->provider_id))
+	if (!profile || !ProviderRegistry::uses_local_credentials(profile->provider_id))
 		return;
+	const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
 	if (username.trimmed().isEmpty() || server.trimmed().isEmpty() || key.trimmed().isEmpty()) {
-		show_transient_error(text("Manual.MissingFields"));
+		show_transient_error(text(research_provider ? "Research.MissingFields" : "Manual.MissingFields"));
 		return;
 	}
 	if (!TokenStore::save_live_credentials(profile_id, {server.trimmed(), key.trimmed()})) {
-		show_transient_error(text("Manual.SaveFailed"));
+		show_transient_error(text(research_provider ? "Research.SaveFailed" : "Manual.SaveFailed"));
 		return;
 	}
 	profile->tiktok_username = username.trimmed();
 	profile->can_go_live = true;
-	profile->application_status = QStringLiteral("manual");
+	profile->application_status = research_provider ? QStringLiteral("research-local") : QStringLiteral("manual");
 	profile->stream_server = server.trimmed();
 	profile->stream_key = key.trimmed();
-	profile->diagnostic = text("Manual.Saved");
+	profile->diagnostic = text(research_provider ? "Research.Saved" : "Manual.Saved");
 	profile->diagnostic_error = false;
 	save_profiles();
 	rebuild_profile_list();
