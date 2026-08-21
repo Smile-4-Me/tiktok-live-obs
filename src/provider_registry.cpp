@@ -28,6 +28,14 @@ QList<ProviderDefinition> ProviderRegistry::available()
 		{research_id(), QStringLiteral("Provider.Research"), QStringLiteral("Research Lab (localhost)"), false}};
 }
 
+bool ProviderRegistry::is_known(const QString &provider_id)
+{
+	for (const ProviderDefinition &provider : available())
+		if (provider.id == provider_id)
+			return true;
+	return false;
+}
+
 bool ProviderRegistry::is_manual(const QString &provider_id)
 {
 	return provider_id == manual_id();

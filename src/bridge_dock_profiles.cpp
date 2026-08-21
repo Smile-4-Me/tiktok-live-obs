@@ -530,6 +530,10 @@ void BridgeDock::load_profiles()
 			Profile profile;
 			profile.id = settings.value(QStringLiteral("id")).toString();
 			profile.provider_id = settings.value(QStringLiteral("provider_id"), ProviderRegistry::streamlabs_id()).toString();
+			// A provider can disappear in a later build. Do not let an orphaned
+			// identifier enter a session path that was never implemented.
+			if (!ProviderRegistry::is_known(profile.provider_id))
+				profile.provider_id = ProviderRegistry::streamlabs_id();
 			profile.display_name = settings.value(QStringLiteral("display_name")).toString();
 			profile.tiktok_username = settings.value(QStringLiteral("tiktok_username")).toString();
 			profile.output_name = settings.value(QStringLiteral("output_name")).toString();

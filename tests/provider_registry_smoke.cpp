@@ -27,6 +27,13 @@ int main()
 		std::cerr << "A required provider is missing from the registry.\n";
 		return 2;
 	}
+	if (!ProviderRegistry::is_known(ProviderRegistry::streamlabs_id()) ||
+		!ProviderRegistry::is_known(ProviderRegistry::manual_id()) ||
+		!ProviderRegistry::is_known(ProviderRegistry::research_id()) ||
+		ProviderRegistry::is_known(QStringLiteral("not-a-provider"))) {
+		std::cerr << "Provider recognition is inconsistent.\n";
+		return 6;
+	}
 	if (ProviderRegistry::uses_local_credentials(ProviderRegistry::streamlabs_id()) ||
 		!ProviderRegistry::uses_local_credentials(ProviderRegistry::manual_id()) ||
 		!ProviderRegistry::uses_local_credentials(ProviderRegistry::research_id())) {
