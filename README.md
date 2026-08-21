@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/badge/license-GPL--3.0--only-3DA639)
 ![Status](https://img.shields.io/badge/status-private%20development-5865F2)
 
-TikTok Live OBS is a provider-based evolution of TikTok Live OBS Bridge. It keeps the proven OBS and Aitum workflow while allowing a profile to choose how its credentials are supplied: Streamlabs today, manual credentials from an authorized source now, and further providers later.
+TikTok Live OBS is a provider-based OBS and Aitum workflow. Each profile can choose how its credentials are supplied: Streamlabs today, manual credentials from an authorized source now, and further providers later.
 
 It is a community project, not a company product. Please read the information below before using it.
 
@@ -126,7 +126,7 @@ Security-sensitive reports belong in [SECURITY.md](SECURITY.md), not in a public
 
 ### Support the project
 
-If TikTok Live OBS Bridge helps your stream and you would like to support its maintenance, you can leave a small tip on Ko-fi. It is completely optional, but always appreciated.
+If TikTok Live OBS helps your stream and you would like to support its maintenance, you can leave a small tip on Ko-fi. It is completely optional, but always appreciated.
 
 <p align="center">
   <a href="https://ko-fi.com/smile_4_meee">
@@ -136,6 +136,6 @@ If TikTok Live OBS Bridge helps your stream and you would like to support its ma
 
 ## License
 
-Copyright © 2026 TikTok Live OBS Bridge Contributors.
+Copyright © 2026 TikTok Live OBS Contributors.
 
 This project is licensed under the [GNU General Public License v3.0 only](LICENSE). It is provided **without warranty**; see the license for the full terms.
