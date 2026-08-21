@@ -83,6 +83,9 @@ The distinction between RapidAPI, an official direct integration, and a
 project-owned authorized backend is documented in
 [Authorized Backend Options](docs/research/AUTHORIZED_BACKEND_OPTIONS.md).
 
+For an official platform or partner discussion, use the
+[Platform Integration Brief](docs/authorization/PLATFORM_INTEGRATION_BRIEF.md).
+
 ## Quick start
 
 1. Open the dock and create or select a profile.
