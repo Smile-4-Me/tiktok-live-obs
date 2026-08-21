@@ -322,6 +322,29 @@ has no TikTok integration and no external network dependency.
 | Five concurrent profile rows | UI remains compact; profile conflicts are still enforced. |
 | Provider switch during view rebuild | No Qt use-after-free; rebuild is deferred to the next event-loop turn. |
 
+## Current implementation record
+
+The private implementation corresponding to this record is intentionally
+small and auditable:
+
+| Component | Repository path | Responsibility | Boundary evidence |
+| --- | --- | --- | --- |
+| Provider registry | `src/provider_registry.*` | Stable provider identifiers and capability selection. | `research-local` is distinct from Streamlabs and Manual. |
+| Local harness | `src/research_lab.*` | Starts a loopback listener on an ephemeral port and sends a generic JSON heartbeat to it every two seconds. | The listener binds to `QHostAddress::LocalHost`; the request target is `127.0.0.1`; no TikTok hostname, request format, or media code exists in this component. |
+| Dock integration | `src/bridge_dock.*` | Shows provider-specific UI, stores local test credentials in the existing secret store, and tears down the harness. | Research sessions are labelled as local research, never as confirmed TikTok LIVE sessions. |
+| Restart recovery | `src/bridge_dock_profiles.cpp` | Clears an old `research-local` reservation on the next OBS start. | A listener is not assumed to survive an OBS restart. |
+
+### Build verification record
+
+| Date | Check | Result |
+| --- | --- | --- |
+| 2026-08-21 | Windows Release build with MSVC/NMake | Passed. |
+| 2026-08-21 | Release DLL dependency inspection | Passed; release C++ runtime dependencies only, with OBS-provided Qt runtime libraries. |
+| 2026-08-21 | Launch OBS with the private plugin installed | Passed; `tiktok-live-obs.dll` was present in the OBS plugin load list and no plugin-specific load failure was logged. |
+
+These checks prove only the local software boundary and loadability. They do
+not validate a TikTok integration, and they must never be presented as such.
+
 ## Open questions for an authorized future integration
 
 These questions must be answered by official documentation or a written
