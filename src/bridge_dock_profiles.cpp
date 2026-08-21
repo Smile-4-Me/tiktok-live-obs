@@ -353,8 +353,10 @@ void BridgeDock::build_login_step(const Profile &profile)
 		auto *layout = new QVBoxLayout(group);
 		auto *provider_form = new QFormLayout();
 		auto *provider_choice = new QComboBox(group);
-		for (const ProviderDefinition &provider : ProviderRegistry::available())
-			provider_choice->addItem(provider.display_name, provider.id);
+		for (const ProviderDefinition &provider : ProviderRegistry::available()) {
+			const QByteArray key = provider.display_name_key.toUtf8();
+			provider_choice->addItem(translated_or(key.constData(), provider.fallback_display_name), provider.id);
+		}
 		const int provider_index = provider_choice->findData(profile.provider_id);
 		provider_choice->setCurrentIndex(provider_index >= 0 ? provider_index : 0);
 		provider_form->addRow(text("Provider.Label"), provider_choice);

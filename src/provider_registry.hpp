@@ -8,7 +8,10 @@
 
 struct ProviderDefinition {
 	QString id;
-	QString display_name;
+	// The registry owns stable identifiers and translation keys. Rendering a
+	// provider name is deliberately left to the dock's localization boundary.
+	QString display_name_key;
+	QString fallback_display_name;
 	bool creates_live_session = false;
 };
 
@@ -24,5 +27,4 @@ public:
 	static bool is_manual(const QString &provider_id);
 	static bool is_research(const QString &provider_id);
 	static bool uses_local_credentials(const QString &provider_id);
-	static QString display_name(const QString &provider_id);
 };
