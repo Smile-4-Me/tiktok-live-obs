@@ -53,7 +53,8 @@ Adjust the executable path if Inno Setup is installed elsewhere. The output is w
 2. Confirm the DLL and both locale files exist.
 3. Build the installer from those artifacts.
 4. Run the research boundary check: `& .\tools\verify-research-boundary.ps1`.
-5. Do not distribute a build containing an experimental provider without an authorized integration and a completed [Future Provider Contract](FUTURE_PROVIDER_CONTRACT.md) review.
+5. Run the secret-storage check: `& .\tools\verify-secret-storage.ps1`.
+6. Do not distribute a build containing an experimental provider without an authorized integration and a completed [Future Provider Contract](FUTURE_PROVIDER_CONTRACT.md) review.
 
 ## Run the local research smoke test
 
