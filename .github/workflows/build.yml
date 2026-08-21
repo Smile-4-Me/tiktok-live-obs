@@ -1,0 +1,181 @@
+name: Cross-platform build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  OBS_VERSION: 31.1.1
+  QT_VERSION: 6.8.3
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check out OBS headers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_VERSION }}
+          path: obs-studio
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DTIKTOK_LIVE_OBS_BUILD_TESTS=ON
+          -DOBS_SOURCE_DIR="${{ github.workspace }}/obs-studio"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $pluginDirectory = "package/obs-plugins/64bit"
+          $dataDirectory = "package/data/obs-plugins/tiktok-live-obs"
+          New-Item -ItemType Directory -Force $pluginDirectory, "$dataDirectory/locale" | Out-Null
+          Copy-Item "dist/tiktok-live-obs.dll" $pluginDirectory
+          Copy-Item "data/locale/*.ini" "$dataDirectory/locale"
+          Copy-Item "LICENSE" $dataDirectory
+          Compress-Archive -Path "package/*" -DestinationPath "tiktok-live-obs-windows-x64.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tiktok-live-obs-windows-x64
+          path: tiktok-live-obs-windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Ubuntu x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check out OBS headers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_VERSION }}
+          path: obs-studio
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libsecret-1-dev \
+            libssl-dev \
+            ninja-build \
+            pkg-config \
+            qt6-base-dev
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DTIKTOK_LIVE_OBS_BUILD_TESTS=ON
+          -DOBS_SOURCE_DIR="${{ github.workspace }}/obs-studio"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          binary="$(find dist -maxdepth 1 -type f -name 'tiktok-live-obs.*' -print -quit)"
+          test -n "${binary}"
+          mkdir -p package/tiktok-live-obs/bin/64bit package/tiktok-live-obs/data
+          cp "${binary}" package/tiktok-live-obs/bin/64bit/
+          cp -R data/locale package/tiktok-live-obs/data/
+          cp LICENSE package/tiktok-live-obs/
+          tar -C package -czf tiktok-live-obs-ubuntu-x86_64.tar.gz tiktok-live-obs
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tiktok-live-obs-ubuntu-x86_64
+          path: tiktok-live-obs-ubuntu-x86_64.tar.gz
+          if-no-files-found: error
+
+  macos:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check out OBS headers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_VERSION }}
+          path: obs-studio
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DTIKTOK_LIVE_OBS_BUILD_TESTS=ON
+          -DOBS_SOURCE_DIR="${{ github.workspace }}/obs-studio"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          binary="$(find dist -maxdepth 1 -type f -name 'tiktok-live-obs.*' -print -quit)"
+          test -n "${binary}"
+          mkdir -p package/tiktok-live-obs/bin package/tiktok-live-obs/data
+          cp "${binary}" package/tiktok-live-obs/bin/
+          cp -R data/locale package/tiktok-live-obs/data/
+          cp LICENSE package/tiktok-live-obs/
+          tar -C package -czf tiktok-live-obs-macos.tar.gz tiktok-live-obs
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tiktok-live-obs-macos
+          path: tiktok-live-obs-macos.tar.gz
+          if-no-files-found: error
