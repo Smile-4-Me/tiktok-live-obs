@@ -47,6 +47,15 @@ Install Inno Setup 6, then run:
 
 Adjust the executable path if Inno Setup is installed elsewhere. The output is written to `installer\Output\` and is intentionally ignored by Git.
 
+## GitHub Actions builds and releases
+
+Open **Actions → Cross-platform build → Run workflow** to choose a semantic
+version, release type, and optional patch notes before any platform build starts.
+`build-only` uploads CI artifacts without creating a tag. `draft`, `prerelease`,
+and `stable` wait for Windows, Ubuntu, and macOS to pass, create the corresponding
+`v<version>` tag and GitHub release, and attach all three platform archives. When
+patch notes are empty, GitHub generates notes from the commits automatically.
+
 ## Before distributing a build
 
 1. Rebuild from a clean build directory.

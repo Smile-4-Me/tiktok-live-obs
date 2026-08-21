@@ -17,6 +17,7 @@ All notable changes are documented here. This project follows the spirit of [Kee
 - Locally rendered, client-secret-bound TikTok QR codes using the static QR generator already provided by the OBS dependency bundle.
 - Protocol fixtures covering the public device-registration envelope and fail-closed RapidAPI request-signature parsing.
 - Built-in LIVE Studio output that sends the signed stream directly from OBS while reusing its configured encoders, without replacing the main streaming service or running an FFmpeg relay.
+- Cross-platform GitHub Actions builds with validated manual version, release type, patch notes, and release artifact publishing for Windows, Ubuntu, and macOS.
 
 ### Security
 

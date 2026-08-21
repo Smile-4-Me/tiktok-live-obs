@@ -1,7 +1,28 @@
 name: Cross-platform build
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('TikTok Live OBS {0} ({1})', inputs.version, inputs.release_type) || format('{0} · {1}', github.event_name, github.ref_name) }}
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (for example, 1.1.0 or 1.1.0-beta.1)
+        required: true
+        default: 0.1.0
+        type: string
+      release_type:
+        description: What to do after every platform build passes
+        required: true
+        default: draft
+        type: choice
+        options:
+          - build-only
+          - draft
+          - prerelease
+          - stable
+      patch_notes:
+        description: Patch notes; leave blank to generate notes from commits
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -15,9 +36,59 @@ env:
   QT_VERSION: 6.8.3
 
 jobs:
+  prepare:
+    name: Prepare build metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      release_type: ${{ steps.metadata.outputs.release_type }}
+    steps:
+      - name: Validate version and release selection
+        id: metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            version="ci-${GITHUB_SHA:0:7}"
+            echo "version=${version}" >> "${GITHUB_OUTPUT}"
+            echo "tag=" >> "${GITHUB_OUTPUT}"
+            echo "release_type=build-only" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          version="${INPUT_VERSION#v}"
+          if [[ ! "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "::error::Version must be SemVer, such as 1.2.3 or 1.2.3-beta.1."
+            exit 1
+          fi
+
+          tag="v${version}"
+          if [[ "${INPUT_RELEASE_TYPE}" != "build-only" ]] &&
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${tag} already exists. Choose another version or use build-only."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "release_type=${INPUT_RELEASE_TYPE}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### Build metadata"
+            echo "- Version: \`${version}\`"
+            echo "- Tag: \`${tag}\`"
+            echo "- Result: \`${INPUT_RELEASE_TYPE}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   windows:
     name: Windows x64
+    needs: prepare
     runs-on: windows-2022
+    env:
+      BUILD_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Check out plugin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,18 +130,21 @@ jobs:
           Copy-Item "dist/tiktok-live-obs.dll" $pluginDirectory
           Copy-Item "data/locale/*.ini" "$dataDirectory/locale"
           Copy-Item "LICENSE" $dataDirectory
-          Compress-Archive -Path "package/*" -DestinationPath "tiktok-live-obs-windows-x64.zip"
+          Compress-Archive -Path "package/*" -DestinationPath "tiktok-live-obs-$env:BUILD_VERSION-windows-x64.zip"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tiktok-live-obs-windows-x64
-          path: tiktok-live-obs-windows-x64.zip
+          name: tiktok-live-obs-${{ needs.prepare.outputs.version }}-windows-x64
+          path: tiktok-live-obs-${{ needs.prepare.outputs.version }}-windows-x64.zip
           if-no-files-found: error
 
   linux:
     name: Ubuntu x86_64
+    needs: prepare
     runs-on: ubuntu-24.04
+    env:
+      BUILD_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Check out plugin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,18 +189,21 @@ jobs:
           cp "${binary}" package/tiktok-live-obs/bin/64bit/
           cp -R data/locale package/tiktok-live-obs/data/
           cp LICENSE package/tiktok-live-obs/
-          tar -C package -czf tiktok-live-obs-ubuntu-x86_64.tar.gz tiktok-live-obs
+          tar -C package -czf "tiktok-live-obs-${BUILD_VERSION}-ubuntu-x86_64.tar.gz" tiktok-live-obs
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tiktok-live-obs-ubuntu-x86_64
-          path: tiktok-live-obs-ubuntu-x86_64.tar.gz
+          name: tiktok-live-obs-${{ needs.prepare.outputs.version }}-ubuntu-x86_64
+          path: tiktok-live-obs-${{ needs.prepare.outputs.version }}-ubuntu-x86_64.tar.gz
           if-no-files-found: error
 
   macos:
     name: macOS
+    needs: prepare
     runs-on: macos-15
+    env:
+      BUILD_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Check out plugin
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,11 +247,70 @@ jobs:
           cp "${binary}" package/tiktok-live-obs/bin/
           cp -R data/locale package/tiktok-live-obs/data/
           cp LICENSE package/tiktok-live-obs/
-          tar -C package -czf tiktok-live-obs-macos.tar.gz tiktok-live-obs
+          tar -C package -czf "tiktok-live-obs-${BUILD_VERSION}-macos.tar.gz" tiktok-live-obs
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tiktok-live-obs-macos
-          path: tiktok-live-obs-macos.tar.gz
+          name: tiktok-live-obs-${{ needs.prepare.outputs.version }}-macos
+          path: tiktok-live-obs-${{ needs.prepare.outputs.version }}-macos.tar.gz
           if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    if: github.event_name == 'workflow_dispatch' && needs.prepare.outputs.release_type != 'build-only'
+    needs:
+      - prepare
+      - windows
+      - linux
+      - macos
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download platform artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: tiktok-live-obs-${{ needs.prepare.outputs.version }}-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release and attach artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TYPE: ${{ needs.prepare.outputs.release_type }}
+          PATCH_NOTES: ${{ inputs.patch_notes }}
+        run: |
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if (( ${#assets[@]} != 3 )); then
+            echo "::error::Expected three platform archives, found ${#assets[@]}."
+            exit 1
+          fi
+
+          release_args=(
+            --repo "${GITHUB_REPOSITORY}"
+            --target "${GITHUB_SHA}"
+            --title "TikTok Live OBS ${RELEASE_VERSION}"
+          )
+          case "${RELEASE_TYPE}" in
+            draft) release_args+=(--draft) ;;
+            prerelease) release_args+=(--prerelease) ;;
+            stable) ;;
+            *) echo "::error::Unsupported release type: ${RELEASE_TYPE}"; exit 1 ;;
+          esac
+
+          if [[ -n "${PATCH_NOTES//[[:space:]]/}" ]]; then
+            printf '%s\n' "${PATCH_NOTES}" > release-notes.md
+            release_args+=(--notes-file release-notes.md)
+          else
+            release_args+=(--generate-notes)
+          fi
+
+          gh release create "${RELEASE_TAG}" "${assets[@]}" "${release_args[@]}"
+          release_url="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json url --jq .url)"
+          echo "Release: [${RELEASE_TAG}](${release_url})" >> "${GITHUB_STEP_SUMMARY}"
