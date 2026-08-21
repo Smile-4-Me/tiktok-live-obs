@@ -1,14 +1,9 @@
 name: Cross-platform build
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('TikTok Live OBS {0} ({1})', inputs.version, inputs.release_type) || format('{0} · {1}', github.event_name, github.ref_name) }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('TikTok Live OBS release ({0})', inputs.release_type) || format('{0} · {1}', github.event_name, github.ref_name) }}
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Release version (for example, 1.1.0 or 1.1.0-beta.1)
-        required: true
-        default: 0.1.0
-        type: string
       release_type:
         description: What to do after every platform build passes
         required: true
@@ -44,26 +39,28 @@ jobs:
       tag: ${{ steps.metadata.outputs.tag }}
       release_type: ${{ steps.metadata.outputs.release_type }}
     steps:
+      - name: Check out version file
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Validate version and release selection
         id: metadata
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_VERSION: ${{ inputs.version }}
           INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
+          version="$(< VERSION)"
+          version="${version//$'\r'/}"
+          if [[ ! "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::VERSION must contain SemVer in MAJOR.MINOR.PATCH form."
+            exit 1
+          fi
+
           if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
-            version="ci-${GITHUB_SHA:0:7}"
             echo "version=${version}" >> "${GITHUB_OUTPUT}"
             echo "tag=" >> "${GITHUB_OUTPUT}"
             echo "release_type=build-only" >> "${GITHUB_OUTPUT}"
             exit 0
-          fi
-
-          version="${INPUT_VERSION#v}"
-          if [[ ! "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "::error::Version must be SemVer, such as 1.2.3 or 1.2.3-beta.1."
-            exit 1
           fi
 
           tag="v${version}"

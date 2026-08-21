@@ -49,12 +49,14 @@ Adjust the executable path if Inno Setup is installed elsewhere. The output is w
 
 ## GitHub Actions builds and releases
 
-Open **Actions → Cross-platform build → Run workflow** to choose a semantic
-version, release type, and optional patch notes before any platform build starts.
-`build-only` uploads CI artifacts without creating a tag. `draft`, `prerelease`,
-and `stable` wait for Windows, Ubuntu, and macOS to pass, create the corresponding
-`v<version>` tag and GitHub release, and attach all three platform archives. When
-patch notes are empty, GitHub generates notes from the commits automatically.
+The root `VERSION` file is the single source of truth for CMake, the Windows
+installer, CI artifact names, tags, and release titles. Update and commit that
+file before releasing. Then open **Actions → Cross-platform build → Run workflow**
+to choose the release type and optional patch notes before any platform build
+starts. `build-only` uploads CI artifacts without creating a tag. `draft`,
+`prerelease`, and `stable` wait for Windows, Ubuntu, and macOS to pass, create the
+corresponding `v<version>` tag and GitHub release, and attach all three platform
+archives. When patch notes are empty, GitHub generates notes from the commits.
 
 ## Before distributing a build
 

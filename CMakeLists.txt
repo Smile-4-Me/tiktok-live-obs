@@ -3,7 +3,13 @@
 
 cmake_minimum_required(VERSION 3.26)
 
-project(tiktok_live_obs VERSION 0.1.0 LANGUAGES CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" TIKTOK_LIVE_OBS_VERSION LIMIT_COUNT 1)
+string(STRIP "${TIKTOK_LIVE_OBS_VERSION}" TIKTOK_LIVE_OBS_VERSION)
+if(NOT TIKTOK_LIVE_OBS_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+  message(FATAL_ERROR "VERSION must contain a semantic version in MAJOR.MINOR.PATCH form")
+endif()
+
+project(tiktok_live_obs VERSION "${TIKTOK_LIVE_OBS_VERSION}" LANGUAGES CXX)
 
 # Single-configuration generators such as NMake do not choose a build type
 # automatically. Default to a production-safe Release build while still

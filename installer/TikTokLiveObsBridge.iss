@@ -2,11 +2,14 @@
 ; Build with Inno Setup 6 or later:
 ;   ISCC.exe installer\TikTokLiveObsBridge.iss
 
+#define SourceRoot ".."
+#define VersionFileHandle FileOpen(SourceRoot + "\VERSION")
+#define AppVersion Trim(FileRead(VersionFileHandle))
+#call FileClose(VersionFileHandle)
+#undef VersionFileHandle
 #define AppName "TikTok Live OBS"
-#define AppVersion "0.1.0"
 #define AppPublisher "TikTok Live OBS Contributors"
 #define PluginModule "tiktok-live-obs"
-#define SourceRoot ".."
 
 [Setup]
 AppId={{6B7A8603-3167-47E4-B95E-9EBBA5C2BFBD}-{code:InstallationId}
