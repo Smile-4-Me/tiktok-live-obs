@@ -1,6 +1,6 @@
 # Building from Source on Windows
 
-This is the current developer build path for the Windows v1.0.0 release. It deliberately does not require a globally installed Qt runtime: the plugin targets the Qt headers and import libraries compatible with the OBS installation ABI.
+This is the current developer build path for the private Windows development build. It deliberately does not require a globally installed Qt runtime: the plugin targets the Qt headers and import libraries compatible with the OBS installation ABI.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ dist\data\locale\en-US.ini
 Install Inno Setup 6, then run:
 
 ```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\TikTokLiveObsBridge.iss
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\TikTokLiveObsBridge.iss
 ```
 
 Adjust the executable path if Inno Setup is installed elsewhere. The output is written to `installer\Output\` and is intentionally ignored by Git.

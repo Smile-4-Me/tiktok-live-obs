@@ -1,15 +1,15 @@
-; TikTok Live OBS Bridge - Windows installer
+; TikTok Live OBS - Windows installer
 ; Build with Inno Setup 6 or later:
 ;   ISCC.exe installer\TikTokLiveObsBridge.iss
 
-#define AppName "TikTok Live OBS Bridge"
-#define AppVersion "1.0.0"
-#define AppPublisher "TikTok Live OBS Bridge Contributors"
-#define PluginModule "tiktok-live-obs-bridge"
+#define AppName "TikTok Live OBS"
+#define AppVersion "0.1.0"
+#define AppPublisher "TikTok Live OBS Contributors"
+#define PluginModule "tiktok-live-obs"
 #define SourceRoot ".."
 
 [Setup]
-AppId={{3DB1D387-4015-4843-B0DB-4195958B6208}-{code:InstallationId}
+AppId={{6B7A8603-3167-47E4-B95E-9EBBA5C2BFBD}-{code:InstallationId}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
@@ -21,7 +21,7 @@ UsePreviousAppDir=no
 UsePreviousLanguage=no
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=TikTok-Live-OBS-Bridge-Setup-{#AppVersion}
+OutputBaseFilename=TikTok-Live-OBS-Setup-{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -32,7 +32,7 @@ PrivilegesRequired=admin
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#AppName} — {code:InstallationDisplayName}
-UninstallFilesDir={commonappdata}\TikTok Live OBS Bridge\uninstall\{code:InstallationId}
+UninstallFilesDir={commonappdata}\TikTok Live OBS\uninstall\{code:InstallationId}
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName={#AppName}
 VersionInfoDescription=Installer for {#AppName}
@@ -122,13 +122,13 @@ end;
 function PluginProfilesPath(): String;
 begin
   Result := AddBackslash(PluginConfigurationDirectory()) +
-    'tiktok-live-obs-bridge-profiles-' + PluginStorageId() + '.ini';
+    'tiktok-live-obs-profiles-' + PluginStorageId() + '.ini';
 end;
 
 function PluginSettingsPath(): String;
 begin
   Result := AddBackslash(PluginConfigurationDirectory()) +
-    'tiktok-live-obs-bridge-' + PluginStorageId() + '.ini';
+    'tiktok-live-obs-' + PluginStorageId() + '.ini';
 end;
 
 procedure RemoveLegacyGlobalPlugin();
@@ -163,8 +163,8 @@ begin
   for Index := 1 to ProfileCount do begin
     ProfileId := GetIniString('profiles', IntToStr(Index) + '\\id', '', ProfilesPath);
     if ProfileId <> '' then begin
-      DeleteStoredCredential('TikTokLiveObsBridge/' + StorageId + '/Streamlabs/' + ProfileId);
-      DeleteStoredCredential('TikTokLiveObsBridge/' + StorageId + '/LiveCredentials/' + ProfileId);
+      DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/Streamlabs/' + ProfileId);
+      DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/LiveCredentials/' + ProfileId);
     end;
   end;
 

@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-TikTok Live OBS Bridge is an independent project. Product names and trademarks belong to their respective owners.
+TikTok Live OBS is an independent project. Product names and trademarks belong to their respective owners.
 
 ## Direct project references
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 TikTok Live OBS Bridge Contributors
+# Copyright (C) 2026 TikTok Live OBS Contributors
 
 cmake_minimum_required(VERSION 3.26)
 
