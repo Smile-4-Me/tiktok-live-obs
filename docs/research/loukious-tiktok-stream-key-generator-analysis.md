@@ -317,6 +317,7 @@ has no TikTok integration and no external network dependency.
 | Start Research provider with no Aitum output | Local heartbeat starts; profile shows a local research session, not a TikTok LIVE. |
 | Bind collision on localhost port | Start fails with an explicit local-service diagnostic. |
 | Stop twice | Second stop is safe and does not crash. |
+| Stop and immediately replace a session | A callback from the stopped session cannot alter the replacement session. |
 | Close OBS during active research session | No crash; next start clears the stale local reservation. |
 | Aitum output fails to start | Existing Aitum verification clears the prepared profile state. |
 | Five concurrent profile rows | UI remains compact; profile conflicts are still enforced. |
