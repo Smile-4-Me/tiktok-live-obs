@@ -369,6 +369,11 @@ provider agreement, not reverse engineering:
 6. Are there platform-specific bitrate, codec, keyframe, or region rules?
 7. What support and deprecation commitments exist for the API?
 
+For the RapidAPI-versus-own-backend decision, see
+[AUTHORIZED_BACKEND_OPTIONS.md](AUTHORIZED_BACKEND_OPTIONS.md). It records
+the operational and authorization requirements of each option without relying
+on an undocumented protocol.
+
 ## Re-research checklist
 
 Repeat or amend this record when any of the following changes:

@@ -79,6 +79,10 @@ Any future external provider must pass the
 [Future Provider Contract](docs/FUTURE_PROVIDER_CONTRACT.md) before it is
 implemented.
 
+The distinction between RapidAPI, an official direct integration, and a
+project-owned authorized backend is documented in
+[Authorized Backend Options](docs/research/AUTHORIZED_BACKEND_OPTIONS.md).
+
 ## Quick start
 
 1. Open the dock and create or select a profile.
