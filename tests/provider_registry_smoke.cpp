@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 TikTok Live OBS Contributors
+
+#include "provider_registry.hpp"
+
+#include <QSet>
+
+#include <iostream>
+
+int main()
+{
+	const QList<ProviderDefinition> providers = ProviderRegistry::available();
+	const QSet<QString> ids = [&providers] {
+		QSet<QString> result;
+		for (const ProviderDefinition &provider : providers)
+			result.insert(provider.id);
+		return result;
+	}();
+
+	if (providers.size() != ids.size() || ids.size() != 3) {
+		std::cerr << "Provider IDs must be unique and complete.\n";
+		return 1;
+	}
+	if (!ids.contains(ProviderRegistry::streamlabs_id()) ||
+		!ids.contains(ProviderRegistry::manual_id()) ||
+		!ids.contains(ProviderRegistry::research_id())) {
+		std::cerr << "A required provider is missing from the registry.\n";
+		return 2;
+	}
+	if (ProviderRegistry::uses_local_credentials(ProviderRegistry::streamlabs_id()) ||
+		!ProviderRegistry::uses_local_credentials(ProviderRegistry::manual_id()) ||
+		!ProviderRegistry::uses_local_credentials(ProviderRegistry::research_id())) {
+		std::cerr << "Credential ownership policy is inconsistent.\n";
+		return 3;
+	}
+	if (!ProviderRegistry::is_manual(ProviderRegistry::manual_id()) ||
+		ProviderRegistry::is_manual(ProviderRegistry::research_id()) ||
+		!ProviderRegistry::is_research(ProviderRegistry::research_id()) ||
+		ProviderRegistry::is_research(ProviderRegistry::manual_id())) {
+		std::cerr << "Provider classification is inconsistent.\n";
+		return 4;
+	}
+
+	for (const ProviderDefinition &provider : providers) {
+		if (provider.id.isEmpty() || provider.display_name_key.isEmpty() ||
+			provider.fallback_display_name.isEmpty()) {
+			std::cerr << "Provider definitions require a complete UI identity.\n";
+			return 5;
+		}
+	}
+
+	std::cout << "Provider Registry smoke test passed.\n";
+	return 0;
+}
