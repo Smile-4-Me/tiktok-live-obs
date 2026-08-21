@@ -1,12 +1,12 @@
 # TikTok Live OBS
 
-> A small, independent OBS Studio plugin for preparing TikTok LIVE sessions and optionally handing their generated stream URL and key to an Aitum Stream Suite output.
+> A native OBS Studio plugin for preparing TikTok LIVE sessions, configuring Aitum outputs, and optionally inserting RapidAPI-supplied frame signatures inside OBS.
 
 ![Windows](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D4?logo=windows&logoColor=white)
 ![License](https://img.shields.io/badge/license-GPL--3.0--only-3DA639)
 ![Status](https://img.shields.io/badge/status-private%20development-5865F2)
 
-TikTok Live OBS is a provider-based OBS and Aitum workflow. Each profile can choose how its credentials are supplied: Streamlabs today, manual credentials from an authorized source now, and further providers later.
+TikTok Live OBS is a provider-based OBS and Aitum workflow. Each profile can connect directly with the experimental **TikTok LIVE Studio** QR provider, use Streamlabs, or use credentials supplied manually by an authorized source.
 
 It is a community project, not a company product. Please read the information below before using it.
 
@@ -39,7 +39,9 @@ It is a community project, not a company product. Please read the information be
 
 ✓ Keeps multiple local TikTok profile configurations in one OBS installation.
 
-✓ Lets every profile choose a credentials provider. Streamlabs retains the full tested workflow; **Manual** accepts a TikTok username, stream URL, and stream key supplied through an authorized source.
+✓ Lets every profile choose a credentials provider. **TikTok LIVE Studio** performs native device registration, QR login, cookie reuse, LIVE creation, heartbeat, and cleanup inside the plugin; Streamlabs retains its existing workflow; **Manual** accepts a TikTok username, stream URL, and stream key supplied through an authorized source.
+
+✓ Stores each LIVE Studio account independently, keeps its device/install IDs stable, persists cookies refreshed by TikTok responses, and provides an in-dock action that deletes the complete saved login.
 
 ✓ Shows whether an account appears ready for PC LIVE access.
 
@@ -47,33 +49,39 @@ It is a community project, not a company product. Please read the information be
 
 ✓ Can update a selected Aitum Stream Suite output with the generated stream URL and key.
 
-✓ Can also be used without Aitum: copy the generated credentials into another streaming workflow.
+✓ Can prefetch signed values from the RapidAPI signer and inject the required H.264/HEVC SEI metadata directly into OBS encoded packets—without an FFmpeg server, local RTMP listener, demux/remux pass, or local signing algorithm.
+
+✓ Can also be used without Aitum: the LIVE Studio provider creates a private native OBS RTMP output, reuses OBS' configured stream encoders, signs only that output, and starts it directly without changing the main Twitch/YouTube service.
 
 ✓ Prevents two profiles from reserving the same Aitum output or TikTok account at the same time.
 
 ✓ Checks whether Aitum actually started an output and cleans up a newly created session when it did not.
 
-✓ Recovers cautiously after OBS is closed during a LIVE session.
+✓ Detects a continuable TikTok room after OBS restarts and offers explicit **Resume TikTok LIVE** and **End TikTok LIVE** actions; it never starts broadcasting merely because OBS launched.
 
 ✓ Uses OBS' selected language and includes 17 localized dock interfaces: Arabic, Brazilian Portuguese, Chinese (Simplified and Traditional), English, French, German, Hindi, Indonesian, Italian, Japanese, Korean, Russian, Spanish, Thai, Turkish, and Vietnamese.
 
 ## Important boundaries
 
-- **Windows only for v1.0.0.** macOS and Linux are not supported yet; see [PLATFORM_SUPPORT.md](PLATFORM_SUPPORT.md).
-- **Aitum is optional.** The plugin works in manual mode without it.
+- **Windows is the supported and tested v1.0.0 target.** The source contains best-effort macOS/Linux paths, but those builds and LIVE workflows are not release-validated; see [PLATFORM_SUPPORT.md](PLATFORM_SUPPORT.md).
+- **OBS Studio 31.0 or newer is required for in-process frame signing.** The feature uses OBS' encoded-packet callback API.
+- **Aitum is optional.** TikTok LIVE Studio has a built-in native output, and the Manual provider can use OBS' main output.
+- **The TikTok LIVE Studio provider requires a RapidAPI subscription/key before QR login.** It uses the hosted signer for request signatures and automatically configures hosted frame signing. Other providers can enable frame signing manually. The plugin never computes request or frame signatures locally and never uploads video frames to the signer.
 - **Nothing here is affiliated with, endorsed by, or supported by TikTok, Streamlabs, Aitum, or OBS Studio.**
-- The Streamlabs/TikTok flow used by this plugin is not a public TikTok API contract. Providers may change, restrict, or remove it at any time.
+- The LIVE Studio and Streamlabs/TikTok flows used by this plugin are not public TikTok API contracts. The LIVE Studio provider is experimental and unofficial; TikTok or another service may change, restrict, or remove these flows at any time.
 - You are responsible for your account, stream content, and compliance with the terms and rules of every service you use. This project does not promise account eligibility, uninterrupted streaming, or any particular platform outcome.
 
 ## Development status
 
 This private repository is under active development. A dedicated installer and public release will follow once the provider architecture is complete.
 
-The private, localhost-only research work is documented in
+The original architecture research is documented in
 [docs/research/loukious-tiktok-stream-key-generator-analysis.md](docs/research/loukious-tiktok-stream-key-generator-analysis.md).
-It records the external architecture research, the RapidAPI assessment, and
-the explicit boundary that this project does not implement platform-specific
-signing or integrity-bypass behavior.
+It records the external architecture, the RapidAPI boundary, and the later
+decision to consume request and frame signatures only from the hosted service
+while keeping device registration and packet transformation native to OBS.
+Request/frame signing algorithms and local signer fallbacks remain deliberately
+absent from this repository.
 
 Any future external provider must pass the
 [Future Provider Contract](docs/FUTURE_PROVIDER_CONTRACT.md) before it is
@@ -88,23 +96,24 @@ For an official platform or partner discussion, use the
 
 ## Quick start
 
-1. Open the dock and create or select a profile.
-2. On the first page, choose **Streamlabs**, **Manual**, or the private **Research Lab (localhost)** provider.
-3. For Streamlabs, connect the TikTok account as before and complete PC LIVE approval if necessary. For Manual, enter credentials supplied through an authorized source. Research Lab is a local-only development tool and does not contact TikTok or alter media.
-4. Choose an Aitum output, or leave the output in **Manual usage** mode.
-5. Add optional stream metadata. Streamlabs creates the LIVE session; Manual applies the supplied credentials; Research Lab starts only its local heartbeat mock.
-6. With Aitum, start the selected output as usual. Without Aitum, copy the configured credentials into your streaming software.
-7. End the LIVE session or local manual reservation in the dock when the stream is over.
+1. Open **Docks → TikTok Live OBS**, then create or select a profile.
+2. On the first page, choose **TikTok LIVE Studio**, **Streamlabs**, **Manual**, or the private **Research Lab (localhost)** provider.
+3. For TikTok LIVE Studio, paste the RapidAPI key, click **Log in with TikTok QR code**, scan with the TikTok mobile app, and confirm on the phone. The plugin securely reuses the resulting account cookies and device IDs on later OBS launches. Streamlabs and Manual retain their existing flows; Research Lab stays local-only.
+4. For TikTok LIVE Studio, keep **TikTok output (inside OBS)** selected, or choose an Aitum output. Other providers can choose Aitum or **Main OBS stream (manual)**.
+5. TikTok LIVE Studio configures in-process signing from the saved account automatically. With other providers, enable **Sign video frames inside OBS** and enter the required RapidAPI/signing identifiers manually.
+6. Add a title and choose a LIVE Studio topic. A game is requested only when the topic is **Gaming**. TikTok LIVE Studio or Streamlabs creates the LIVE session; Manual applies supplied credentials; Research Lab starts only its local heartbeat mock.
+7. The plugin prefetches a five-minute signature window before allowing the selected output to start, then refreshes it in the background.
+8. **Create TikTok LIVE** automatically starts the built-in TikTok output. If you selected Aitum or a Manual provider, start that chosen output yourself. End the LIVE session in the dock when the stream is over.
 
 ## Data and privacy
 
-Profile names and non-secret preferences are saved per OBS installation under the current Windows user's local OBS configuration directory. Streamlabs tokens and generated stream credentials are stored in **Windows Credential Manager**, not in the plugin's INI files.
+Profile names and non-secret preferences are saved per OBS installation under the current user's local OBS configuration directory. Streamlabs tokens, generated stream credentials, RapidAPI/frame-signing credentials, LIVE Studio cookies, and device identifiers are stored in the operating system's secret store—**Windows Credential Manager** in the supported build, with best-effort macOS Keychain and Linux Secret Service backends—not in the plugin's INI files.
 
 See [docs/PRIVACY.md](docs/PRIVACY.md) for the exact storage model, its limits, and how uninstalling handles configuration.
 
 ## Building from source
 
-The source is included so the plugin can be inspected, improved, and built independently. The current build requires Windows, CMake, Visual Studio Build Tools, compatible Qt 6 headers/import libraries, and an OBS source tree matching the target ABI.
+The source is included so the plugin can be inspected, improved, and built independently. The supported build requires Windows, CMake, Visual Studio Build Tools, compatible Qt 6 headers/import libraries, and an OBS source tree matching the target ABI. Best-effort macOS/Linux CMake paths are documented separately and do not imply release support.
 
 Detailed, reproducible instructions are in [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -113,6 +122,7 @@ Detailed, reproducible instructions are in [docs/BUILDING.md](docs/BUILDING.md).
 This project exists because other projects made the problem understandable:
 
 - [Loukious/StreamLabsTikTokStreamKeyGenerator](https://github.com/Loukious/StreamLabsTikTokStreamKeyGenerator) — the GPL-3.0 reference project whose observed flow and ideas informed this implementation. Thank you, Loukious.
+- [Loukious/TikTokStreamKeyGenerator](https://github.com/Loukious/TikTokStreamKeyGenerator) — the public behavioral reference for LIVE Studio device registration, QR/session flow, the hosted signing contracts, and SEI cadence. No request- or frame-signing algorithm is included.
 - [OBS Studio](https://obsproject.com/) — the broadcasting platform this plugin extends.
 - [Aitum Stream Suite](https://aitum.tv/) — optional output management integration. This project does not bundle, modify, or represent Aitum.
 

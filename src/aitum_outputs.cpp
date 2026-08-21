@@ -2,8 +2,7 @@
 // Copyright (C) 2026 TikTok Live OBS Bridge Contributors
 
 #include "aitum_outputs.hpp"
-
-#include <windows.h>
+#include "native_platform.hpp"
 
 #include <cstring>
 
@@ -30,8 +29,7 @@ using bfree_fn = void (*)(void *);
 template<typename Function>
 Function obs_function(const char *name)
 {
-	const HMODULE obs = GetModuleHandleW(L"obs.dll");
-	return obs ? reinterpret_cast<Function>(GetProcAddress(obs, name)) : nullptr;
+	return reinterpret_cast<Function>(resolve_native_symbol(NativeLibrary::Obs, name));
 }
 
 QJsonArray find_outputs(const QJsonValue &value)
@@ -73,7 +71,7 @@ bool find_success(const QJsonValue &value, bool *success)
 
 bool aitum_stream_suite_available()
 {
-	return GetModuleHandleW(L"aitum-stream-suite.dll") != nullptr;
+	return native_library_loaded(NativeLibrary::Aitum);
 }
 
 QStringList aitum_output_names(QString *diagnostic, QHash<QString, QString> *types, QHash<QString, bool> *active_states)

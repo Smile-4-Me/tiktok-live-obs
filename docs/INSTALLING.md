@@ -1,5 +1,8 @@
 # Installing TikTok Live OBS
 
+OBS Studio 31.0 or newer is required. Older OBS releases do not expose the
+encoded-packet callback used by optional in-process frame signing.
+
 ## Supported installation types
 
 The Windows installer supports both:

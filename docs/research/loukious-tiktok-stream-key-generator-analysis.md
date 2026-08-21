@@ -6,10 +6,12 @@ This record preserves the architectural research performed for the private
 TikTok Live OBS project. It is intentionally detailed so that future work can
 resume without repeating discovery.
 
-It is **not** an implementation guide for TikTok-specific authentication,
-request signing, integrity metadata, encoder impersonation, or bypassing a
-platform control. Those areas are out of scope for this project unless an
-official, documented, and authorized integration becomes available.
+It is **not** an implementation guide for TikTok request-signing or
+frame-signing algorithms, encoder impersonation, or bypassing a platform
+control. A later project-owner decision permits reuse of the upstream
+repository's publicly tracked device-registration and Passport/QR/session
+code. Request and frame signatures remain opaque values obtained from the
+hosted RapidAPI service.
 
 The reusable findings are limited to general software architecture:
 
@@ -27,14 +29,17 @@ The reusable findings are limited to general software architecture:
 | --- | --- |
 | Upstream repository | <https://github.com/Loukious/TikTokStreamKeyGenerator> |
 | Inspected branch | `main` |
-| Pinned revision | `31a6906df4b67e5281697a1310884a80719a7cd6` |
-| Revision date | 2026-07-10T22:45:02+01:00 |
+| Pinned revision | `b259b09940b7fc867f9eddb7987030d7ea0772a1` |
+| Revision date | 2026-08-09T09:43:08+01:00 |
 | Research date | 2026-08-21 |
 | Local read-only research checkout | `research/Loukious-TikTokStreamKeyGenerator-20260821` (not part of this repository) |
 | License finding | No license file was present in the inspected repository root. Do not copy source code from it without obtaining permission or confirming a license. |
 
-This document is an independent description of observed architecture. No
-upstream signing or protocol implementation is imported into this repository.
+Git confirmed that `Libs/device_gen.py`, `Libs/log_encrypt_codec.py`,
+`Libs/signers.py`, and `TiktokStreamKeyGenerator.py` are tracked at that public
+revision; local capture/sample files were untracked and excluded. The plugin
+ports only the public device-registration envelope and Passport/QR/session
+formatting. No upstream request- or frame-signing algorithm is imported.
 
 ## Executive summary
 
@@ -55,7 +60,9 @@ The application delegates its platform-specific signing to a hosted service.
 RapidAPI is the marketplace/gateway used for the default endpoint; it is not a
 technical requirement of the GUI or the local proxy. Replacing it would still
 require an independently authorized implementation of the external signing
-service. This project will not implement or emulate that service.
+service. This project does not implement or emulate that service; the optional
+client calls it over HTTPS and fails closed when usable signed values are not
+available.
 
 ## Repository inventory
 
@@ -74,10 +81,10 @@ service. This project will not implement or emulate that service.
 | Module | Observed responsibility | Reusable lesson |
 | --- | --- | --- |
 | `domain_routing.py` | Host discovery, region candidate selection, common headers, and time-offset handling. | Isolate endpoint resolution and clock handling behind a transport boundary. |
-| `device_gen.py` | Desktop-environment identity generation and version discovery. | Treat client capability information as an explicit provider concern; do not scatter it through UI code. |
+| `device_gen.py` | Desktop-environment identity generation and version discovery. | Implemented behind the LIVE Studio provider and stored per account. |
 | `signers.py` | Client for an external signing service. | Keep sensitive/remote signing work behind one interface and fail closed if it is unavailable. |
 | `ffmpeg_sei_proxy.py` | Local receiver/relay orchestration, media-stream transformation pipeline, process restart, logging, and relay health. | Keep media transport in an independently monitored component with a clear lifecycle. |
-| `log_encrypt_codec.py` | Encoded telemetry helper. | Keep telemetry formatting/encoding separate from product state. Do not reuse platform-specific formats. |
+| `log_encrypt_codec.py` | Public device-registration envelope helper. | Ported into a small fixture-tested native codec, separate from product state. |
 | `XArgus.py`, `XLadon.py`, `XFrameSign.py` | Platform-specific signing/integrity helpers. | Explicitly excluded. No code, behavior, or algorithm is adopted. |
 
 ## Main application decomposition
@@ -101,9 +108,9 @@ retry selection, structured error conversion, and endpoint fallbacks before
 business methods consume the results.
 
 **Adoption in TikTok Live OBS:** provider-specific remote operations remain
-behind a provider/session interface. The existing Streamlabs client remains a
-provider implementation; the Manual provider intentionally has no remote
-control-plane client.
+behind a provider/session interface. `TikTokStudioClient` owns the native
+device/QR/LIVE lifecycle, Streamlabs remains a separate provider, and Manual
+intentionally has no remote control-plane client.
 
 ### 2. Login client
 
@@ -111,9 +118,9 @@ The upstream repository has a dedicated browser/QR login component rather than
 putting browser flow logic into the main stream class. It owns state, polling,
 cleanup, and cookie persistence separately.
 
-**Adoption:** keep login mechanisms provider-owned. The dock only asks a
-provider to connect or validate an account; it should not know how a provider
-obtains authorization.
+**Adoption:** the LIVE Studio QR dialog owns rendering and polling while the
+client owns Passport requests and account cookies. The dock receives only the
+normalized account result.
 
 ### 3. Local transport/relay process
 
@@ -238,8 +245,8 @@ documentation](https://docs.rapidapi.com/v2.0/docs/additional-request-headers)
 | --- | --- | --- |
 | Python / PySide6 | Standalone desktop UI runtime. | Not needed: our product is a native OBS/Qt plugin. |
 | `requests` / `curl_cffi` | HTTP transport and browser-like session behavior. | Reuse only the generic lesson: isolate HTTP transport and timeouts. Our plugin uses its existing native HTTP stack. |
-| FFmpeg | Local receiving/relaying process. | Useful as an optional local research transport only. Do not bundle or modify it for platform-specific metadata injection. |
-| RapidAPI | Hosted signer marketplace/gateway. | Not needed for our local research provider. |
+| FFmpeg | Local receiving/relaying process. | Not used. OBS' encoded-packet callback provides the insertion point without a listener, child process, or remux pass. |
+| RapidAPI | Hosted signer marketplace/gateway. | Used for LIVE Studio request signatures and in-process frame signatures; Research Lab remains network-isolated. |
 | `pycryptodome` and signing helper files | Platform-specific transformations. | Explicitly excluded. |
 | `truststore` | Certificate-store integration. | The native plugin already uses OS-supported transport on Windows. Multi-platform strategy remains documented separately. |
 
@@ -259,8 +266,9 @@ documentation](https://docs.rapidapi.com/v2.0/docs/additional-request-headers)
    metadata and avoid logs containing them.
 7. **Lifecycle ownership.** Every timer, worker, and child process needs an
    owner and an idempotent stop path.
-8. **Health is not telemetry.** A local service health check can run without
-   copying, altering, signing, or forwarding any media.
+8. **Keep expensive work off the encoder thread.** Fetch and refresh signed
+   values in batches; the packet callback performs only cadence checks and the
+   occasional bounded packet replacement.
 
 ## Explicitly excluded material
 
@@ -269,14 +277,37 @@ algorithms, or called by TikTok Live OBS:
 
 - request-signing algorithms and their inputs;
 - frame-signing algorithms;
-- H.264/HEVC metadata insertion routines;
-- client/device impersonation;
-- private endpoint reconstruction;
-- cookie-import automation for an undocumented client flow; and
+- the local `XArgus`, `XLadon`, or `XFrameSign` implementations;
+- any untracked capture, sample, cookie, or account file; and
 - any attempt to disguise encoder identity or bypass an integrity check.
 
-This exclusion protects the project boundary and keeps the local research
-harness useful independently of TikTok.
+The included public device-registration envelope, Passport formatting, QR
+binding, and session request shapes are a deliberate later exception to the
+earlier generic-only boundary. The media feature independently constructs the required H.264/HEVC SEI
+envelope around values returned by RapidAPI. It contains no cryptographic or
+signature-generation fallback. The exclusion above also keeps the local
+Research Lab useful independently of TikTok; that provider still has no media
+or external-network path.
+
+## Implemented in-process media boundary
+
+The project owner later approved an opt-in native OBS media path with these
+constraints:
+
+- request five-minute signature batches from the RapidAPI `/framesign/batch`
+  service using the user's key;
+- keep API traffic and refresh work off OBS' encoder/output thread;
+- attach an OBS 31 encoded-packet callback before output start;
+- inject payload-type-100 Annex-B SEI NAL units for H.264 or HEVC only when a
+  cadence slot is due;
+- preserve OBS' existing muxer, RTMP output, encoder settings, timestamps, and
+  original access unit;
+- stop the output if the signature cache expires or the codec/packet contract
+  is unsupported; and
+- never start a local server, FFmpeg process, or local signing implementation.
+
+This is a deliberate change from the earlier media exclusion recorded above.
+It does not change the Research Lab boundary or claim official TikTok support.
 
 ## Local Research Provider specification
 
@@ -331,6 +362,8 @@ small and auditable:
 | Component | Repository path | Responsibility | Boundary evidence |
 | --- | --- | --- | --- |
 | Provider registry | `src/provider_registry.*` | Stable provider identifiers and capability selection. | `research-local` is distinct from Streamlabs and Manual. |
+| LIVE Studio provider | `src/tiktok_studio_client.*`, `src/tiktok_studio_device.*`, `src/tiktok_request_signer.*` | Native public device/Passport/session flow plus hosted request signatures. | Request signatures fail closed when RapidAPI is unavailable; the local codec is limited to the public device-registration envelope. |
+| QR/account boundary | `src/tiktok_studio_qr.*`, `src/tiktok_studio_login_dialog.*`, `src/tiktok_studio_account.hpp`, `src/token_store.*` | Client-secret-bound local QR rendering and account-scoped secure persistence. | Cookies/keys/device IDs remain in Windows Credential Manager and can be deleted from the dock. |
 | Local harness | `src/research_lab.*` | Starts a loopback listener on an ephemeral port and sends a generic JSON heartbeat to it every two seconds. | The listener binds to `QHostAddress::LocalHost`; the request target is `127.0.0.1`; no TikTok hostname, request format, or media code exists in this component. |
 | Dock integration | `src/bridge_dock.*` | Shows provider-specific UI, stores local test credentials in the existing secret store, and tears down the harness. | Research sessions are labelled as local research, never as confirmed TikTok LIVE sessions. |
 | Restart recovery | `src/bridge_dock_profiles.cpp` | Clears an old `research-local` reservation on the next OBS start. | A listener is not assumed to survive an OBS restart. |
@@ -347,6 +380,8 @@ can outlive the UI event that initiated them.
 | 2026-08-21 | Windows Release build with MSVC/NMake | Passed. |
 | 2026-08-21 | Release DLL dependency inspection | Passed; release C++ runtime dependencies only, with OBS-provided Qt runtime libraries. |
 | 2026-08-21 | Launch OBS with the private plugin installed | Passed; `tiktok-live-obs.dll` was present in the OBS plugin load list and no plugin-specific load failure was logged. |
+| 2026-08-21 | Native RapidAPI-fixture and H.264/HEVC media-path tests | Passed; no external request or real signature was used by the test. |
+| 2026-08-21 | Public device-envelope, QR-rendering, and hosted request-signature parser fixtures | Passed; matched the tracked public codec fixture and used no external request or live credential. |
 
 These checks prove only the local software boundary and loadability. They do
 not validate a TikTok integration, and they must never be presented as such.

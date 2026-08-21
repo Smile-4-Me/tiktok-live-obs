@@ -9,6 +9,12 @@ const QString &ProviderRegistry::streamlabs_id()
 	return id;
 }
 
+const QString &ProviderRegistry::tiktok_studio_id()
+{
+	static const QString id = QStringLiteral("tiktok-studio");
+	return id;
+}
+
 const QString &ProviderRegistry::manual_id()
 {
 	static const QString id = QStringLiteral("manual");
@@ -23,7 +29,8 @@ const QString &ProviderRegistry::research_id()
 
 QList<ProviderDefinition> ProviderRegistry::available()
 {
-	return {{streamlabs_id(), QStringLiteral("Provider.Streamlabs"), QStringLiteral("Streamlabs"), true},
+	return {{tiktok_studio_id(), QStringLiteral("Provider.TikTokStudio"), QStringLiteral("TikTok LIVE Studio"), true},
+		{streamlabs_id(), QStringLiteral("Provider.Streamlabs"), QStringLiteral("Streamlabs"), true},
 		{manual_id(), QStringLiteral("Provider.Manual"), QStringLiteral("Manual"), false},
 		{research_id(), QStringLiteral("Provider.Research"), QStringLiteral("Research Lab (localhost)"), false}};
 }
@@ -34,6 +41,11 @@ bool ProviderRegistry::is_known(const QString &provider_id)
 		if (provider.id == provider_id)
 			return true;
 	return false;
+}
+
+bool ProviderRegistry::is_tiktok_studio(const QString &provider_id)
+{
+	return provider_id == tiktok_studio_id();
 }
 
 bool ProviderRegistry::is_manual(const QString &provider_id)

@@ -11,14 +11,21 @@ enum class ProfileState { NeedsLogin, AwaitingLiveAccess, Ready, SessionUncertai
 
 struct Profile {
 	QString id;
-	QString provider_id = QStringLiteral("streamlabs");
+	QString account_id;
+	QString provider_id = QStringLiteral("tiktok-studio");
 	QString display_name;
 	QString tiktok_username;
 	QString output_name;
 	QString stream_title;
+	QString hashtag_id;
 	QString category;
 	QString category_id;
 	bool mature = false;
+	bool frame_signing_enabled = false;
+	// Runtime-only: the current callback is attached to OBS' main stream rather
+	// than the named Aitum output. No callback survives an OBS restart.
+	bool frame_signing_uses_main_output = false;
+	QString frame_signing_output_name;
 	bool can_go_live = false;
 	bool live = false;
 	bool preparing = false;
@@ -26,6 +33,7 @@ struct Profile {
 	bool recovering = false;
 	bool session_uncertain = false;
 	QString live_id;
+	QString stream_id;
 	QString stream_server;
 	QString stream_key;
 	QString application_status;

@@ -3,21 +3,34 @@
 
 #include "streamlabs_desktop.hpp"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <regex>
 #include <vector>
 
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
+
 QString find_streamlabs_desktop_token()
 {
-	const wchar_t *app_data = _wgetenv(L"APPDATA");
-	if (!app_data)
-		return {};
-	const std::filesystem::path directory = std::filesystem::path(app_data) /
-		"slobs-client" / "Local Storage" / "leveldb";
+	QString application_data;
+#ifdef Q_OS_WIN
+	application_data = qEnvironmentVariable("APPDATA");
+#elif defined(Q_OS_MACOS)
+	application_data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+#else
+	application_data = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+#endif
+	const QString directory_name = QDir(application_data).filePath(
+		QStringLiteral("slobs-client/Local Storage/leveldb"));
+#ifdef Q_OS_WIN
+	const std::filesystem::path directory(directory_name.toStdWString());
+#else
+	const QByteArray native_directory = QFile::encodeName(directory_name);
+	const std::filesystem::path directory(native_directory.constData());
+#endif
 	if (!std::filesystem::is_directory(directory))
 		return {};
 

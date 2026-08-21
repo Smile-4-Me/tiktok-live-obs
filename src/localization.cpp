@@ -2,9 +2,8 @@
 // Copyright (C) 2026 TikTok Live OBS Bridge Contributors
 
 #include "localization.hpp"
+#include "native_platform.hpp"
 #include "plugin_paths.hpp"
-
-#include <windows.h>
 
 #include <QDir>
 #include <QFileInfo>
@@ -17,6 +16,11 @@ QHash<QString, QString> translations;
 
 QString module_locale_directory()
 {
+	const QString data_directory = module_data_directory();
+	const QString native_locale_directory = QDir(data_directory).filePath(QStringLiteral("locale"));
+	if (!data_directory.isEmpty() && QDir(native_locale_directory).exists())
+		return native_locale_directory;
+
 	const QDir directory(module_installation_directory());
 	const QString standard_directory = directory.filePath(
 		QStringLiteral("data/obs-plugins/tiktok-live-obs/locale"));
@@ -43,9 +47,8 @@ QString translated_or(const char *key, const QString &fallback)
 QString obs_language()
 {
 	using GetLocaleFunction = const char *(*)();
-	const HMODULE libobs = GetModuleHandleW(L"obs.dll");
-	const auto get_locale = libobs ? reinterpret_cast<GetLocaleFunction>(
-		GetProcAddress(libobs, "obs_get_locale")) : nullptr;
+	const auto get_locale = reinterpret_cast<GetLocaleFunction>(
+		resolve_native_symbol(NativeLibrary::Obs, "obs_get_locale"));
 	const char *locale = get_locale ? get_locale() : nullptr;
 	return locale ? QString::fromUtf8(locale) : QStringLiteral("en-US");
 }

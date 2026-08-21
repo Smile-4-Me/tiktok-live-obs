@@ -4,15 +4,20 @@
 #pragma once
 
 #include "aitum_bridge.hpp"
+#include "native_output_manager.hpp"
+#include "output_signing_manager.hpp"
 #include "profile.hpp"
 #include "provider_registry.hpp"
 #include "research_lab.hpp"
 #include "streamlabs_client.hpp"
+#include "tiktok_studio_client.hpp"
 
 #include <QSet>
+#include <QHash>
 #include <QStringList>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -23,6 +28,7 @@ class QLayout;
 class QLabel;
 class QPushButton;
 class QScrollArea;
+class QTimer;
 class QWidget;
 class QVBoxLayout;
 
@@ -71,12 +77,18 @@ private:
 	void show_aitum_missing_notice();
 
 	void verify_token_for_profile(const QString &profile_id, const QString &token);
+	void begin_tiktok_studio_login(const QString &profile_id, const QString &rapidapi_key);
+	void refresh_tiktok_studio_account(const QString &profile_id, bool report_error = false);
+	void disconnect_tiktok_studio_account(const QString &profile_id);
+	void add_tiktok_studio_account_controls(QFormLayout *form, const Profile &profile, QWidget *parent);
 	void save_local_credentials(const QString &profile_id, const QString &username, const QString &server,
 		const QString &key);
 	void refresh_selected_account();
 	void show_transient_error(const QString &message);
 	void set_diagnostic(Profile &profile, const QString &message, bool is_error = false);
 	void clear_live_session(Profile &profile);
+	void prepare_output_signing(const QString &profile_id, const QString &output_name,
+		const QString &session_room_id, OutputSigningManager::Completion completion);
 	void refresh_profile_ui(const QString &profile_id);
 	void reconcile_previous_sessions();
 	void load_profiles();
@@ -88,6 +100,19 @@ private:
 	void verify_aitum_output_started(const QString &profile_id, const QString &output_name, int attempt);
 	void start_selected_live();
 	void start_profile_live(const QString &profile_id, bool start_aitum_output);
+	void start_tiktok_studio_live(const QString &profile_id, bool start_aitum_output);
+	void create_tiktok_studio_live_session(const QString &profile_id, bool start_aitum_output,
+		TikTokStudioAccountCredentials account);
+	void resume_tiktok_studio_live(const QString &profile_id, bool start_aitum_output = false);
+	void activate_tiktok_studio_live(const QString &profile_id, const QString &output_name,
+		bool start_aitum_output, TikTokStudioLive live);
+	void prepare_tiktok_studio_output(const QString &profile_id, const QString &output_name,
+		bool start_aitum_output, TikTokStudioLive live, bool aitum_available);
+	void prepare_tiktok_studio_native_output(const QString &profile_id, TikTokStudioLive live);
+	void verify_tiktok_studio_native_output(const QString &profile_id, int attempt);
+	void fail_tiktok_studio_start(const QString &profile_id, const QString &output_name,
+		bool start_aitum_output, TikTokStudioLive live, const QString &reason);
+	void run_tiktok_studio_heartbeats();
 	void end_selected_live();
 	void end_live_for_output(const QString &output_name);
 	void end_profile_live(const QString &profile_id);
@@ -102,5 +127,14 @@ private:
 	int selected_profile_ = -1;
 	AitumBridge bridge_;
 	StreamlabsClient streamlabs_;
+	TikTokStudioClient tiktok_studio_;
 	ResearchLab research_lab_;
+	NativeOutputManager native_output_;
+	OutputSigningManager output_signing_;
+	QTimer *tiktok_studio_heartbeat_timer_ = nullptr;
+	QSet<QString> tiktok_studio_heartbeat_in_flight_;
+	QSet<QString> tiktok_studio_heartbeat_failed_;
+	QHash<QString, int> tiktok_studio_heartbeat_status_;
+	QHash<QString, int> tiktok_studio_stale_heartbeat_count_;
+	QHash<QString, quint64> tiktok_studio_account_generation_;
 };

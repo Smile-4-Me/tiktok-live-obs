@@ -67,7 +67,9 @@ Source: "{#SourceRoot}\LICENSE"; DestDir: "{app}\data\obs-plugins\{#PluginModule
 
 [UninstallDelete]
 Type: files; Name: "{app}\obs-plugins\64bit\{#PluginModule}.dll"
+Type: files; Name: "{app}\obs-plugins\64bit\tiktok-live-obs-bridge.dll"
 Type: filesandordirs; Name: "{app}\data\obs-plugins\{#PluginModule}\locale"
+Type: filesandordirs; Name: "{app}\data\obs-plugins\tiktok-live-obs-bridge"
 Type: files; Name: "{app}\data\obs-plugins\{#PluginModule}\LICENSE"
 
 [Code]
@@ -139,6 +141,11 @@ begin
     selected OBS installation folder. }
   DelTree(ExpandConstant('{commonappdata}\obs-studio\plugins\{#PluginModule}'),
     True, True, True);
+  DelTree(ExpandConstant('{commonappdata}\obs-studio\plugins\tiktok-live-obs-bridge'),
+    True, True, True);
+  DeleteFile(ExpandConstant('{app}\obs-plugins\64bit\tiktok-live-obs-bridge.dll'));
+  DelTree(ExpandConstant('{app}\data\obs-plugins\tiktok-live-obs-bridge'),
+    True, True, True);
 end;
 
 procedure DeleteStoredCredential(const TargetName: String);
@@ -154,7 +161,9 @@ var
   ProfilesPath: String;
   ProfileCount: Integer;
   Index: Integer;
+  CookieIndex: Integer;
   ProfileId: String;
+  AccountId: String;
   StorageId: String;
 begin
   ProfilesPath := PluginProfilesPath();
@@ -165,6 +174,20 @@ begin
     if ProfileId <> '' then begin
       DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/Streamlabs/' + ProfileId);
       DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/LiveCredentials/' + ProfileId);
+      DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/FrameSigning/' + ProfileId);
+      { Retain cleanup for credentials created by pre-1.0 development builds. }
+      DeleteStoredCredential('TikTokLiveObsBridge/' + StorageId + '/Streamlabs/' + ProfileId);
+      DeleteStoredCredential('TikTokLiveObsBridge/' + StorageId + '/LiveCredentials/' + ProfileId);
+    end;
+    AccountId := GetIniString('profiles', IntToStr(Index) + '\\account_id', '', ProfilesPath);
+    if AccountId <> '' then begin
+      DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/TikTokStudioAccount/' + AccountId);
+      for CookieIndex := 0 to 127 do begin
+        DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/TikTokStudioCookie' +
+          IntToStr(CookieIndex) + '/' + AccountId);
+        DeleteStoredCredential('TikTokLiveObs/' + StorageId + '/TikTokStudioCookieB' +
+          IntToStr(CookieIndex) + '/' + AccountId);
+      end;
     end;
   end;
 
@@ -185,10 +208,12 @@ begin
   if UninstallSilent then
     Exit;
 
-  Form := CreateCustomForm(430, 150, False, False);
+  Form := CreateCustomForm();
   try
     Form.Caption := CustomMessage('UninstallDataTitle');
     Form.Position := poScreenCenter;
+    Form.ClientWidth := ScaleX(430);
+    Form.ClientHeight := ScaleY(150);
 
     Description := TNewStaticText.Create(Form);
     Description.Parent := Form;

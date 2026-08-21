@@ -1,7 +1,8 @@
 # Future Provider Contract
 
 This document is the implementation gate for any provider added after
-`Streamlabs`, `Manual`, or the local-only `research-local` provider. It is
+the experimental `tiktok-studio`, `Streamlabs`, `Manual`, or local-only
+`research-local` provider. It is
 written so a future contributor can decide whether a proposal belongs in this
 project before touching the OBS UI or transport code.
 
@@ -79,12 +80,22 @@ Invariants:
 
 The following do not qualify as a provider implementation:
 
-- reproducing undocumented request-signing or integrity behavior;
+- reproducing a TikTok request- or frame-signing algorithm, embedding its secrets, or
+  silently falling back to a local implementation when a hosted signer fails;
 - pretending to be another encoder, client, or service;
-- modifying media frames or metadata to satisfy an undocumented platform
+- manufacturing locally signed metadata to satisfy an undocumented platform
   control;
 - importing non-licensed upstream source code;
 - shipping a provider whose only evidence is reverse-engineered traffic.
+
+The RapidAPI clients are used for both LIVE Studio request signatures and the
+optional media-output frame signatures. They consume opaque signed values
+returned by the user's RapidAPI subscription and perform no signing locally.
+The LIVE Studio provider does implement the separately public device-registration
+envelope and Passport parameter formatting; those are documented, fixture-tested,
+and are not a local fallback for request/frame signing. None of these distinctions
+implies TikTok endorsement or authorization: distribution and use still need the
+privacy, terms, provenance, and authorization review described above.
 
 ## Review checklist
 

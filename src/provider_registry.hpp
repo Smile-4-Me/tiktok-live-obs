@@ -21,11 +21,13 @@ struct ProviderDefinition {
 class ProviderRegistry final {
 public:
 	static const QString &streamlabs_id();
+	static const QString &tiktok_studio_id();
 	static const QString &manual_id();
 	static const QString &research_id();
 	static QList<ProviderDefinition> available();
 	static bool is_known(const QString &provider_id);
 	static bool is_manual(const QString &provider_id);
+	static bool is_tiktok_studio(const QString &provider_id);
 	static bool is_research(const QString &provider_id);
 	static bool uses_local_credentials(const QString &provider_id);
 };

@@ -31,7 +31,8 @@ constexpr char aitum_output_button_object_name[] = "canvasOutput";
 } // namespace
 
 BridgeDock::BridgeDock(QWidget *obs_main_window)
-		: QWidget(obs_main_window), bridge_(obs_main_window, this), streamlabs_(this), research_lab_(this)
+		: QWidget(obs_main_window), bridge_(obs_main_window, this), streamlabs_(this), tiktok_studio_(this),
+		  research_lab_(this), output_signing_(this)
 	{
 		setObjectName(QStringLiteral("TikTokLiveObsDockContents"));
 		TokenStore::set_storage_scope(installation_storage_scope());
@@ -54,6 +55,11 @@ BridgeDock::BridgeDock(QWidget *obs_main_window)
 		rebuild_profile_list();
 		show_selected_profile();
 		refresh_selected_account();
+		tiktok_studio_heartbeat_timer_ = new QTimer(this);
+		tiktok_studio_heartbeat_timer_->setInterval(5000);
+		connect(tiktok_studio_heartbeat_timer_, &QTimer::timeout, this,
+			[this] { run_tiktok_studio_heartbeats(); });
+		tiktok_studio_heartbeat_timer_->start();
 		qApp->installEventFilter(this);
 	}
 
@@ -346,6 +352,8 @@ Profile *BridgeDock::live_profile_for_output(const QString &output_name)
 
 QString BridgeDock::tiktok_account_id(const Profile &profile) const
 	{
+		if (ProviderRegistry::is_tiktok_studio(profile.provider_id) && !profile.account_id.isEmpty())
+			return QStringLiteral("studio:%1").arg(profile.account_id.toCaseFolded());
 		return profile.tiktok_username.trimmed().toCaseFolded();
 	}
 

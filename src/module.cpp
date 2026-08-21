@@ -1,7 +1,6 @@
 #include "bridge_dock.hpp"
 #include "localization.hpp"
-
-#include <windows.h>
+#include "native_platform.hpp"
 
 #include <QWidget>
 
@@ -20,16 +19,10 @@ using remove_dock_fn = void (*)(const char *);
 
 QWidget *bridge_dock = nullptr;
 
-HMODULE frontend_api()
-{
-	return GetModuleHandleW(L"obs-frontend-api.dll");
-}
-
 template<typename Function>
 Function frontend_function(const char *name)
 {
-	const HMODULE module = frontend_api();
-	return module ? reinterpret_cast<Function>(GetProcAddress(module, name)) : nullptr;
+	return reinterpret_cast<Function>(resolve_native_symbol(NativeLibrary::Frontend, name));
 }
 
 QWidget *obs_main_window()

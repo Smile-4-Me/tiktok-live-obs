@@ -8,6 +8,7 @@
 // Files are scoped to the physical OBS installation. This keeps portable OBS
 // instances independent while allowing an update at the same path to retain data.
 QString module_installation_directory();
+QString module_data_directory();
 QString installation_storage_scope();
 QString profiles_settings_path();
 QString plugin_settings_path();
