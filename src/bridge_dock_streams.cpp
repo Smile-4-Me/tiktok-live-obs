@@ -64,8 +64,13 @@ void BridgeDock::build_stream_step(const Profile &profile)
 			refresh_outputs->setToolTip(text("Stream.ReloadOutputs"));
 			refresh_outputs->setFixedSize(30, 30);
 			output_layout->addWidget(refresh_outputs);
-			auto populate_outputs = [this, output, profile, studio_provider] {
-				const QString saved_name = selected_profile() ? selected_profile()->output_name : profile.output_name;
+			const QString profile_id = profile.id;
+			auto populate_outputs = [this, output, profile_id, studio_provider] {
+				// This editor can outlive a profile-list refresh. Always resolve the
+				// profile by its stable ID rather than whichever row happens to be
+				// selected when the refresh is processed.
+				const Profile *current = find_profile(profile_id);
+				const QString saved_name = current ? current->output_name : QString{};
 				QString diagnostic;
 				const QStringList names = aitum_output_names(&diagnostic);
 				const bool aitum_available = aitum_stream_suite_available();
@@ -74,8 +79,9 @@ void BridgeDock::build_stream_step(const Profile &profile)
 				output->addItem(studio_provider
 					? translated_or("Studio.Stream.NativeOutput", QStringLiteral("TikTok output (inside OBS)"))
 					: text("Stream.MainOutput"), QString());
-				output->addItems(names);
-				const int saved_index = output->findText(saved_name);
+				for (const QString &name : names)
+					output->addItem(name, name);
+				const int saved_index = output->findData(saved_name);
 				output->setCurrentIndex(saved_index >= 0 ? saved_index : 0);
 				output->blockSignals(false);
 				output->setToolTip(studio_provider
@@ -187,8 +193,8 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		for (QLineEdit *field : {rapidapi_key, tiktok_uid, device_id, room_id, api_url})
 			connect(field, &QLineEdit::editingFinished, this, save_signing_credentials);
 		connect(signing_enabled, &QCheckBox::toggled, this,
-			[this, signing_group, save_signing_credentials](bool enabled) {
-				if (Profile *current = selected_profile()) {
+			[this, profile_id, signing_group, save_signing_credentials](bool enabled) {
+				if (Profile *current = find_profile(profile_id)) {
 					current->frame_signing_enabled = enabled;
 					save_profiles();
 					if (enabled)
@@ -201,13 +207,12 @@ void BridgeDock::build_stream_step(const Profile &profile)
 				}
 				signing_group->setVisible(enabled);
 			});
-		connect(title, &QLineEdit::textEdited, this, [this, title] {
-			if (Profile *current = selected_profile()) {
+		connect(title, &QLineEdit::textEdited, this, [this, profile_id, title] {
+			if (Profile *current = find_profile(profile_id)) {
 				current->stream_title = title->text();
 				save_profiles();
 			}
 		});
-		const QString profile_id = profile.id;
 		if (studio_provider) {
 			connect(studio_topic, &QComboBox::currentIndexChanged, this,
 				[this, profile_id, studio_topic, studio_game, studio_game_label](int) {
@@ -303,7 +308,7 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		} else {
 			connect(category, &QLineEdit::textEdited, this,
 				[this, profile_id, category, category_choices] {
-					if (Profile *current = selected_profile()) {
+					if (Profile *current = find_profile(profile_id)) {
 						current->category = category->text();
 						current->category_id.clear();
 						save_profiles();
@@ -326,8 +331,8 @@ void BridgeDock::build_stream_step(const Profile &profile)
 						});
 				});
 			connect(category_choices, &QListWidget::itemClicked, this,
-				[this, category, category_choices](QListWidgetItem *item) {
-					if (Profile *current = selected_profile()) {
+				[this, profile_id, category, category_choices](QListWidgetItem *item) {
+					if (Profile *current = find_profile(profile_id)) {
 						current->category = item->text();
 						current->category_id = item->data(Qt::UserRole).toString();
 						category->setText(current->category);
@@ -336,8 +341,8 @@ void BridgeDock::build_stream_step(const Profile &profile)
 					category_choices->hide();
 				});
 		}
-		connect(mature, &QCheckBox::toggled, this, [this](bool checked) {
-			if (Profile *current = selected_profile()) { current->mature = checked; save_profiles(); }
+		connect(mature, &QCheckBox::toggled, this, [this, profile_id](bool checked) {
+			if (Profile *current = find_profile(profile_id)) { current->mature = checked; save_profiles(); }
 		});
 		add_live_status(form, profile, group);
 		detail_layout_->addWidget(group);
@@ -348,20 +353,26 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		auto *end_live = new QPushButton(studio_provider
 			? translated_or("Studio.Stream.End", QStringLiteral("End TikTok LIVE"))
 			: text(local_provider ? "Manual.End" : "Stream.End"), detail_container_);
-		go_live->setEnabled(!profile.preparing && !profile.live && !profile.recovering);
-		end_live->setEnabled(profile.live && !profile.ending && !profile.recovering);
+		go_live->setEnabled(!profile.preparing && !profile.live && !profile.recovering &&
+			!profile.session_uncertain);
+		end_live->setEnabled((profile.live || profile.preparing || profile.session_uncertain) &&
+			!profile.ending && !profile.recovering);
 		connect(go_live, &QPushButton::clicked, this, [this] { start_selected_live(); });
 		connect(end_live, &QPushButton::clicked, this, [this] { end_selected_live(); });
-		connect(output, &QComboBox::currentIndexChanged, this, [this, output, go_live] {
-			if (Profile *current = selected_profile()) {
-				current->output_name = output->currentIndex() > 0 ? output->currentText() : QString{};
+		connect(output, &QComboBox::currentIndexChanged, this, [this, profile_id, output, go_live] {
+			if (Profile *current = find_profile(profile_id)) {
+				// The empty data value represents the built-in/main OBS output. Real
+				// Aitum output names are stored as item data, so the first real output
+				// works for every provider too.
+				current->output_name = output->currentData().toString();
 				save_profiles();
-				go_live->setEnabled(!current->preparing && !current->live && !current->recovering);
+				go_live->setEnabled(!current->preparing && !current->live && !current->recovering &&
+					!current->session_uncertain);
 				QTimer::singleShot(0, this, [this] { rebuild_profile_list(); });
 			}
 		});
 		detail_layout_->addWidget(go_live);
-		if (studio_provider && profile.session_uncertain && profile.live &&
+		if (studio_provider && profile.session_uncertain &&
 			!profile.live_id.isEmpty() && !profile.stream_id.isEmpty() &&
 			!profile.stream_server.isEmpty() && !profile.stream_key.isEmpty()) {
 			auto *resume_live = new QPushButton(translated_or("Studio.Stream.Resume",
@@ -539,7 +550,8 @@ bool BridgeDock::output_in_use_by_another_profile(const Profile &profile) const
 	{
 		const bool main_output = profile.output_name.isEmpty() || !aitum_stream_suite_available();
 		for (const Profile &candidate : profiles_) {
-			if (candidate.id == profile.id || (!candidate.live && !candidate.preparing))
+			if (candidate.id == profile.id ||
+				(!candidate.live && !candidate.preparing && !candidate.session_uncertain))
 				continue;
 			const bool candidate_main_output = candidate.output_name.isEmpty() || !aitum_stream_suite_available();
 			if ((main_output && candidate_main_output) ||
@@ -552,7 +564,7 @@ bool BridgeDock::output_in_use_by_another_profile(const Profile &profile) const
 void BridgeDock::end_unstarted_aitum_session(const QString &profile_id, const QString &output_name)
 	{
 		Profile *profile = find_profile(profile_id);
-		if (!profile || !profile->live ||
+		if (!profile || (!profile->live && !profile->preparing) ||
 			(!ProviderRegistry::uses_local_credentials(profile->provider_id) && profile->live_id.isEmpty())) {
 			outputs_preparing_.remove(output_name);
 			return;
@@ -611,7 +623,9 @@ void BridgeDock::end_unstarted_aitum_session(const QString &profile_id, const QS
 void BridgeDock::verify_aitum_output_started(const QString &profile_id, const QString &output_name, int attempt)
 	{
 		Profile *profile = find_profile(profile_id);
-		if (!profile || !profile->live || profile->ending) {
+	// A TikTok room can be prepared before Aitum has actually started its
+	// encoder. Treat that as pending, never as a confirmed LIVE stream.
+	if (!profile || (!profile->live && !profile->preparing) || profile->ending) {
 			outputs_preparing_.remove(output_name);
 			return;
 		}
@@ -619,9 +633,12 @@ void BridgeDock::verify_aitum_output_started(const QString &profile_id, const QS
 		bool active = false;
 		QString diagnostic;
 		const bool status_available = aitum_output_is_active(output_name, &active, &diagnostic);
-		if (status_available && active) {
-			outputs_preparing_.remove(output_name);
-			profile->diagnostic = text("Diagnostic.OutputStarted");
+	if (status_available && active) {
+		outputs_preparing_.remove(output_name);
+		profile->live = true;
+		profile->preparing = false;
+		profile->session_uncertain = false;
+		profile->diagnostic = text("Diagnostic.OutputStarted");
 			profile->diagnostic_error = false;
 			save_profiles();
 			refresh_profile_ui(profile_id);
@@ -638,8 +655,30 @@ void BridgeDock::verify_aitum_output_started(const QString &profile_id, const QS
 
 		// An accepted vendor request is not proof that the encoder started. Do not
 		// leave a TikTok LIVE reservation behind when Aitum/OBS never became active.
-		end_unstarted_aitum_session(profile_id, output_name);
-	}
+	end_unstarted_aitum_session(profile_id, output_name);
+}
+
+void BridgeDock::start_aitum_output_and_verify(const QString &profile_id, const QString &output_name,
+	std::function<void(const QString &)> on_start_failure)
+{
+	QTimer::singleShot(250, this, [this, profile_id, output_name,
+		on_start_failure = std::move(on_start_failure)]() mutable {
+		QString diagnostic;
+		if (!aitum_start_output(output_name, &diagnostic)) {
+			outputs_preparing_.remove(output_name);
+			if (on_start_failure)
+				on_start_failure(diagnostic);
+			return;
+		}
+		if (Profile *profile = find_profile(profile_id)) {
+			profile->diagnostic = text("Diagnostic.VerifyingOutput");
+			profile->diagnostic_error = false;
+			save_profiles();
+			refresh_profile_ui(profile_id);
+		}
+		verify_aitum_output_started(profile_id, output_name, 0);
+	});
+}
 
 void BridgeDock::start_selected_live()
 	{
@@ -715,7 +754,10 @@ void BridgeDock::start_tiktok_studio_live(const QString &profile_id, bool start_
 
 				if (!live.room_id.isEmpty() && !live.stream_id.isEmpty()) {
 					current->preparing = false;
-					current->live = true;
+					// A reusable TikTok room is not evidence that OBS is currently
+					// streaming. Keep it as an unresolved session until the user
+					// resumes or ends it.
+					current->live = false;
 					current->session_uncertain = true;
 					current->live_id = live.room_id;
 					current->stream_id = live.stream_id;
@@ -792,7 +834,7 @@ void BridgeDock::create_tiktok_studio_live_session(const QString &profile_id,
 			}
 			if (!error.isEmpty()) {
 				if (!live.room_id.isEmpty() && !live.stream_id.isEmpty() && live.account.has_login()) {
-					current->live = true;
+					current->live = false;
 					current->live_id = live.room_id;
 					current->stream_id = live.stream_id;
 					current->stream_server = live.server;
@@ -821,7 +863,7 @@ void BridgeDock::resume_tiktok_studio_live(const QString &profile_id, bool start
 {
 	Profile *profile = find_profile(profile_id);
 	if (!profile || !ProviderRegistry::is_tiktok_studio(profile->provider_id) ||
-		!profile->live || profile->preparing || profile->ending || profile->recovering)
+		(!profile->live && !profile->session_uncertain) || profile->preparing || profile->ending || profile->recovering)
 		return;
 	const TikTokStudioAccountCredentials account =
 		TokenStore::load_tiktok_studio_account(profile->account_id);
@@ -895,7 +937,9 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 		outputs_preparing_.remove(output_name);
 		return;
 	}
-	current->live = true;
+	// Creating a TikTok room reserves credentials, but the stream is only live
+	// after the selected output reports that its encoder actually started.
+	current->live = false;
 	current->preparing = true;
 	current->recovering = false;
 	current->session_uncertain = false;
@@ -939,17 +983,31 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 				"The selected Aitum output is no longer available. Choose the built-in TikTok output and try again.")));
 		return;
 	}
+	if (live.server.trimmed().isEmpty() || live.key.trimmed().isEmpty()) {
+		// The provider/session layer must return usable RTMP credentials before
+		// the provider-neutral Aitum bridge is allowed to update an output.
+		fail_tiktok_studio_start(profile_id, output_name, start_aitum_output,
+			std::move(live), translated_or("Studio.Stream.CredentialsMissing", QStringLiteral(
+				"TikTok did not return a stream URL and key for this LIVE. Try creating the LIVE again.")));
+		return;
+	}
 
-	bridge_.update_async({live.server, live.key, output_name},
+	// Keep the RTMP pair separate from the move-only callback capture. C++ does
+	// not guarantee argument evaluation order, so passing live.server/live.key
+	// beside `live = std::move(live)` can hand empty values to Aitum.
+	const QString aitum_server = live.server;
+	const QString aitum_key = live.key;
+	update_aitum_output_for_profile(profile_id, output_name, aitum_server, aitum_key,
 		[this, profile_id, output_name, start_aitum_output, live = std::move(live)]
 		(BridgeResult result) mutable {
 			if (result != BridgeResult::Success) {
+				const QString reason = aitum_bridge_result_message(result, output_name);
 				fail_tiktok_studio_start(profile_id, output_name, start_aitum_output,
-					std::move(live), text("Error.AitumUpdateFailed"));
+					std::move(live), reason);
 				return;
 			}
 			prepare_tiktok_studio_output(profile_id, output_name,
-				start_aitum_output, std::move(live), true);
+				start_aitum_output, std::move(live));
 		});
 }
 
@@ -1047,7 +1105,7 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 	}
 
 	void BridgeDock::prepare_tiktok_studio_output(const QString &profile_id, const QString &output_name,
-	bool start_aitum_output, TikTokStudioLive live, bool aitum_available)
+		bool start_aitum_output, TikTokStudioLive live)
 	{
 		Profile *profile = find_profile(profile_id);
 		if (!profile) {
@@ -1056,58 +1114,36 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 				[](TikTokStudioEndResult) {});
 			return;
 		}
-		profile->preparing = true;
-		profile->diagnostic = translated_or("Signing.Prefetching",
-			QStringLiteral("Prefetching frame signatures …"));
+		// Aitum outputs use the same path as every other provider: credentials
+		// have already been stored through the common bridge, so start and verify
+		// the selected output directly. Provider-specific preparation does not
+		// belong between those two shared operations.
+		profile->preparing = start_aitum_output;
+		profile->diagnostic = start_aitum_output
+			? text("Diagnostic.StartingOutput")
+			: text("Diagnostic.SessionReady");
 		profile->diagnostic_error = false;
 		save_profiles();
 		refresh_profile_ui(profile_id);
-
-		// Copy before moving live into the completion capture. Function argument
-		// evaluation order must not decide whether signing receives the room ID.
-		const QString signing_room_id = live.room_id;
-		prepare_output_signing(profile_id, output_name, signing_room_id,
-			[this, profile_id, output_name, start_aitum_output, live = std::move(live), aitum_available]
-			(bool attached, QString signing_error) mutable {
-				Profile *prepared = find_profile(profile_id);
-				if (!prepared) {
-					outputs_preparing_.remove(output_name);
-					return;
+		if (!start_aitum_output) {
+			profile->preparing = false;
+			outputs_preparing_.remove(output_name);
+			save_profiles();
+			refresh_profile_ui(profile_id);
+			return;
+		}
+		start_aitum_output_and_verify(profile_id, output_name,
+			[this, profile_id, output_name](const QString &diagnostic) {
+				if (Profile *current = find_profile(profile_id)) {
+					TikTokStudioLive failed_live;
+					failed_live.account = TokenStore::load_tiktok_studio_account(current->account_id);
+					failed_live.room_id = current->live_id;
+					failed_live.stream_id = current->stream_id;
+					failed_live.server = current->stream_server;
+					failed_live.key = current->stream_key;
+					fail_tiktok_studio_start(profile_id, output_name, true,
+						std::move(failed_live), text("OneClick.StartFailed").arg(diagnostic));
 				}
-				prepared->preparing = false;
-				if (!attached) {
-					fail_tiktok_studio_start(profile_id, output_name, start_aitum_output,
-						std::move(live), signing_error);
-					return;
-				}
-				prepared->diagnostic = start_aitum_output
-					? text("Diagnostic.StartingOutput") : text("Diagnostic.SessionReady");
-				prepared->diagnostic_error = false;
-				save_profiles();
-				refresh_profile_ui(profile_id);
-				if (!aitum_available)
-					show_aitum_missing_notice();
-				if (!start_aitum_output) {
-					outputs_preparing_.remove(output_name);
-					return;
-				}
-				QTimer::singleShot(250, this, [this, profile_id, output_name] {
-					QString diagnostic;
-					if (!aitum_start_output(output_name, &diagnostic)) {
-						if (Profile *current = find_profile(profile_id)) {
-							TikTokStudioLive failed_live;
-							failed_live.account = TokenStore::load_tiktok_studio_account(current->account_id);
-							failed_live.room_id = current->live_id;
-							failed_live.stream_id = current->stream_id;
-							failed_live.server = current->stream_server;
-							failed_live.key = current->stream_key;
-							fail_tiktok_studio_start(profile_id, output_name, true,
-								std::move(failed_live), text("OneClick.StartFailed").arg(diagnostic));
-						}
-						return;
-					}
-					verify_aitum_output_started(profile_id, output_name, 0);
-				});
 			});
 	}
 
@@ -1138,7 +1174,7 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 				if (result.ended || result.stale_session) {
 					clear_live_session(*current);
 				} else {
-					current->live = true;
+					current->live = false;
 					current->session_uncertain = true;
 				}
 				current->diagnostic = text("Diagnostic.Failed").arg(result.error.isEmpty()
@@ -1238,7 +1274,8 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 					});
 				return;
 			}
-			bridge_.update_async({credentials.server, credentials.key, manual_output_name},
+			update_aitum_output_for_profile(manual_profile_id, manual_output_name,
+				credentials.server, credentials.key,
 				[this, manual_profile_id, manual_output_name, start_aitum_output](BridgeResult result) {
 					Profile *current = find_profile(manual_profile_id);
 					if (!current) {
@@ -1286,11 +1323,8 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 							refresh_profile_ui(manual_profile_id);
 							if (!start_aitum_output)
 								return;
-							QTimer::singleShot(250, this, [this, manual_profile_id, manual_output_name] {
-								QString diagnostic;
-								const bool started = aitum_start_output(manual_output_name, &diagnostic);
-								if (!started) {
-									outputs_preparing_.remove(manual_output_name);
+							start_aitum_output_and_verify(manual_profile_id, manual_output_name,
+								[this, manual_profile_id](const QString &diagnostic) {
 									if (Profile *failed = find_profile(manual_profile_id)) {
 										clear_live_session(*failed);
 										failed->diagnostic = text("OneClick.StartFailed").arg(diagnostic);
@@ -1298,10 +1332,7 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 										save_profiles();
 										refresh_profile_ui(manual_profile_id);
 									}
-									return;
-								}
-								verify_aitum_output_started(manual_profile_id, manual_output_name, 0);
-							});
+								});
 						});
 				});
 			return;
@@ -1419,7 +1450,8 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 				rebuild_profile_list();
 				if (selected_profile() == current)
 					show_selected_profile();
-				bridge_.update_async({live.server, live.key, output_name}, [this, active_profile_id, output_name, token, live, start_aitum_output](BridgeResult result) {
+				update_aitum_output_for_profile(active_profile_id, output_name, live.server, live.key,
+					[this, active_profile_id, output_name, token, live, start_aitum_output](BridgeResult result) {
 					Profile *updated = find_profile(active_profile_id);
 					if (!updated) {
 						if (start_aitum_output)
@@ -1489,24 +1521,18 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 								refresh_profile_ui(active_profile_id);
 								if (!start_aitum_output)
 									return;
-								QTimer::singleShot(250, this, [this, active_profile_id, output_name] {
-									QString diagnostic;
-									const bool started = aitum_start_output(output_name, &diagnostic);
-									if (Profile *current = find_profile(active_profile_id)) {
-										current->diagnostic = started ? text("Diagnostic.VerifyingOutput")
-											: text("Diagnostic.Failed").arg(text("OneClick.StartFailed").arg(diagnostic));
-										current->diagnostic_error = !started;
-										save_profiles();
-										refresh_profile_ui(active_profile_id);
-									}
-									if (!started) {
+								start_aitum_output_and_verify(active_profile_id, output_name,
+									[this, active_profile_id, output_name](const QString &diagnostic) {
+										if (Profile *current = find_profile(active_profile_id)) {
+											current->diagnostic = text("Diagnostic.Failed").arg(
+												text("OneClick.StartFailed").arg(diagnostic));
+											current->diagnostic_error = true;
+											save_profiles();
+											refresh_profile_ui(active_profile_id);
+										}
 										output_signing_.detach(output_name);
-										outputs_preparing_.remove(output_name);
 										show_transient_error(text("OneClick.StartFailed").arg(diagnostic));
-										return;
-									}
-									verify_aitum_output_started(active_profile_id, output_name, 0);
-								});
+									});
 							});
 						return;
 					}
@@ -1566,7 +1592,8 @@ void BridgeDock::end_live_for_output(const QString &output_name)
 void BridgeDock::end_profile_live(const QString &profile_id)
 	{
 		Profile *profile = find_profile(profile_id);
-		if (!profile || !profile->live || profile->ending || profile->recovering)
+		if (!profile || (!profile->live && !profile->preparing && !profile->session_uncertain) ||
+			profile->ending || profile->recovering)
 			return;
 		if (ProviderRegistry::is_tiktok_studio(profile->provider_id)) {
 			if (native_output_.contains(profile_id)) {

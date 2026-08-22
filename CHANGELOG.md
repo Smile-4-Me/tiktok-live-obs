@@ -4,6 +4,52 @@ All notable changes are documented here. This project follows the spirit of [Kee
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-22
+
+### Added
+
+- Added a provider-neutral Aitum credential handoff. Streamlabs, TikTok LIVE
+  Studio, and Manual now submit their ready stream URL/key pair through the
+  same validation and Aitum update operation.
+- Added a single shared Aitum output start-and-verify operation. Once a
+  provider has updated an Aitum output, the same code starts that output and
+  confirms that Aitum reports it as active.
+- Added bounded, credential-free Aitum bridge diagnostics. The bridge records
+  its progress and result without writing stream URLs, stream keys, tokens,
+  cookies, or API keys to disk.
+- Added specific Aitum bridge results for an unavailable editor, rejected
+  credential fields, a missing save action, and a save-confirmation timeout.
+
+### Changed
+
+- TikTok LIVE Studio no longer inserts provider-specific preparation between
+  the successful Aitum update and the shared Aitum output start. Its Aitum
+  path is now identical to the Streamlabs and Manual paths after credentials
+  have been obtained.
+- A prepared TikTok LIVE room is now shown as pending rather than as an active
+  broadcast until the selected Aitum output confirms that its encoder started.
+- Recovered TikTok LIVE rooms are treated as unresolved sessions until they
+  are explicitly resumed or ended. They continue to reserve the associated
+  TikTok account and output to prevent conflicting sessions.
+
+### Fixed
+
+- Fixed an evaluation-order bug that could pass empty TikTok LIVE Studio RTMP
+  credentials to the Aitum bridge while preserving those same credentials in
+  the provider callback.
+- Fixed Aitum editor detection after opening Output Settings. The bridge now
+  recognizes the visible modal editor and its owned-child variant, and ignores
+  stale hidden editors retained by Qt/Aitum.
+- Fixed false Aitum save failures caused by unrelated retained dialogs after a
+  successful editor save.
+- Fixed profile-name and stream-detail UI rebuild crashes caused by widgets
+  being deleted while Qt was still dispatching an editor signal.
+- Fixed output selection persistence by storing the selected output's item
+  data instead of relying on list indices. This also supports the first real
+  Aitum output consistently.
+- Fixed lifecycle cleanup so a session that fails before the Aitum encoder is
+  active can still be ended and its output reservation released.
+
 ## [0.1.1] - 2026-08-22
 
 ### Removed

@@ -63,7 +63,7 @@ It is a community project, not a company product. Please read the information be
 
 ## Important boundaries
 
-- **Windows is the supported and tested v0.1.1 target.** The source contains best-effort macOS/Linux paths, but those builds and LIVE workflows are not release-validated; see [PLATFORM_SUPPORT.md](PLATFORM_SUPPORT.md).
+- **Windows is the supported and tested v0.1.2 target.** The source contains best-effort macOS/Linux paths, but those builds and LIVE workflows are not release-validated; see [PLATFORM_SUPPORT.md](PLATFORM_SUPPORT.md).
 - **OBS Studio 31.0 or newer is required for in-process frame signing.** The feature uses OBS' encoded-packet callback API.
 - **Aitum is optional.** TikTok LIVE Studio has a built-in native output, and the Manual provider can use OBS' main output.
 - **The TikTok LIVE Studio provider requires a RapidAPI subscription/key before QR login.** It uses the hosted signer for request signatures and automatically configures hosted frame signing. Other providers can enable frame signing manually. The plugin never computes request or frame signatures locally and never uploads video frames to the signer.
@@ -76,7 +76,7 @@ It is a community project, not a company product. Please read the information be
 This private repository is under active development. A dedicated installer and public release will follow once the provider architecture is complete.
 
 Changes and migration details for the current patch release are in
-[docs/RELEASE_0.1.1.md](docs/RELEASE_0.1.1.md).
+[docs/RELEASE_0.1.2.md](docs/RELEASE_0.1.2.md).
 
 The original architecture research is documented in
 [docs/research/loukious-tiktok-stream-key-generator-analysis.md](docs/research/loukious-tiktok-stream-key-generator-analysis.md).

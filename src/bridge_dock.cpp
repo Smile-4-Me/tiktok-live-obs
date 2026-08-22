@@ -12,6 +12,9 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDateTime>
+#include <QFile>
+#include <QDir>
 #include <QEvent>
 #include <QFormLayout>
 #include <QInputDialog>
@@ -21,12 +24,27 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
+#include <QStandardPaths>
+#include <QTextStream>
 #include <QTimer>
 #include <QToolBar>
 
 namespace {
 
 constexpr char aitum_output_button_object_name[] = "canvasOutput";
+
+// This trace intentionally records no credentials. It exists to distinguish a
+// provider failing to supply an RTMP pair from a failure in the Aitum UI bridge.
+void trace_aitum_handoff(const QString &event)
+{
+	const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+	QDir().mkpath(directory);
+	QFile file(QDir(directory).filePath(QStringLiteral("tiktok-live-obs-aitum-handoff.log")));
+	if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+		return;
+	QTextStream stream(&file);
+	stream << QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) << ' ' << event << '\n';
+}
 
 } // namespace
 
@@ -316,7 +334,71 @@ QString BridgeDock::output_name_for_aitum_button(const QAbstractButton *button) 
 				return name;
 		}
 		return {};
+}
+
+void BridgeDock::update_aitum_output_for_profile(const QString &profile_id, const QString &output_name,
+	const QString &server, const QString &key, AitumBridge::Completion completion)
+{
+	if (!find_profile(profile_id) || output_name.trimmed().isEmpty()) {
+		completion(BridgeResult::TargetOutputMissing);
+		return;
 	}
+	const QString normalized_server = server.trimmed();
+	const QString normalized_key = key.trimmed();
+	trace_aitum_handoff(QStringLiteral("profile=%1 output=%2 server-present=%3 key-present=%4")
+		.arg(profile_id, output_name, normalized_server.isEmpty() ? QStringLiteral("no") : QStringLiteral("yes"),
+			normalized_key.isEmpty() ? QStringLiteral("no") : QStringLiteral("yes")));
+	if (normalized_server.isEmpty() || normalized_key.isEmpty()) {
+		qWarning().noquote() << "[TikTok Live OBS] Aitum handoff rejected empty credentials for output"
+			<< output_name << ".";
+		completion(BridgeResult::CredentialUpdateFailed);
+		return;
+	}
+	if (!aitum_stream_suite_available()) {
+		completion(BridgeResult::AitumNotAvailable);
+		return;
+	}
+	bridge_.update_async({normalized_server, normalized_key, output_name}, std::move(completion));
+}
+
+QString BridgeDock::aitum_bridge_result_message(BridgeResult result, const QString &output_name) const
+{
+	switch (result) {
+	case BridgeResult::Success:
+		return {};
+	case BridgeResult::Busy:
+		return translated_or("Aitum.Bridge.Busy", QStringLiteral(
+			"Another Aitum update is still running. Please try again in a moment."));
+	case BridgeResult::AitumNotAvailable:
+		return translated_or("Aitum.Bridge.NotAvailable", QStringLiteral(
+			"Aitum Stream Suite could not be opened. Make sure Aitum is installed and try again."));
+	case BridgeResult::TargetOutputMissing:
+		return translated_or("Aitum.Bridge.OutputMissing", QStringLiteral(
+			"The selected Aitum output \u201c%1\u201d was not found.")).arg(output_name);
+	case BridgeResult::OutputTabMissing:
+		return translated_or("Aitum.Bridge.OutputTabMissing", QStringLiteral(
+			"Aitum's Output settings page could not be opened."));
+	case BridgeResult::OutputActionMissing:
+		return translated_or("Aitum.Bridge.OutputActionMissing", QStringLiteral(
+			"Aitum's Output Settings button could not be found for the selected output."));
+	case BridgeResult::EditorInvalid:
+		return QStringLiteral("Aitum opened an output editor with an unexpected layout.");
+	case BridgeResult::CredentialUpdateFailed:
+		return QStringLiteral("Aitum did not accept the stream URL or key fields.");
+	case BridgeResult::SaveActionMissing:
+		return QStringLiteral("Aitum's Save Output button could not be found.");
+	case BridgeResult::SaveConfirmationTimeout:
+		return QStringLiteral("Aitum did not close the output editor after saving.");
+	case BridgeResult::SaveFailed:
+		return translated_or("Aitum.Bridge.SaveFailed", QStringLiteral(
+			"Aitum did not confirm the stream URL and key update."));
+	case BridgeResult::SettingsAlreadyOpen:
+		return translated_or("Aitum.Bridge.SettingsOpen", QStringLiteral(
+			"Close the open Aitum settings window, then try again."));
+	}
+	return translated_or("Error.AitumUpdateFailed", QStringLiteral(
+		"TikTok LIVE was created, but could not be transferred to Aitum."));
+}
 
 std::vector<Profile *> BridgeDock::profiles_for_output(const QString &output_name, bool ready_only)
 	{
@@ -325,6 +407,7 @@ std::vector<Profile *> BridgeDock::profiles_for_output(const QString &output_nam
 			if (profile.output_name != output_name)
 				continue;
 			if (ready_only && (!profile.can_go_live || profile.live || profile.preparing ||
+				profile.session_uncertain ||
 				tiktok_account_in_use_by_another_profile(profile)))
 				continue;
 			matches.push_back(&profile);
@@ -353,7 +436,7 @@ const Profile *BridgeDock::active_profile_for_tiktok_account(const Profile &prof
 		if (account.isEmpty())
 			return nullptr;
 		for (const Profile &other : profiles_) {
-			if (other.id != profile.id && (other.live || other.preparing) &&
+			if (other.id != profile.id && (other.live || other.preparing || other.session_uncertain) &&
 				tiktok_account_id(other) == account)
 				return &other;
 		}

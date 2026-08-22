@@ -25,6 +25,10 @@ enum class BridgeResult {
 	TargetOutputMissing,
 	OutputTabMissing,
 	OutputActionMissing,
+	EditorInvalid,
+	CredentialUpdateFailed,
+	SaveActionMissing,
+	SaveConfirmationTimeout,
 	SaveFailed,
 	SettingsAlreadyOpen,
 };

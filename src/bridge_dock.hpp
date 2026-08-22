@@ -86,6 +86,12 @@ private:
 	void show_transient_error(const QString &message);
 	void set_diagnostic(Profile &profile, const QString &message, bool is_error = false);
 	void clear_live_session(Profile &profile);
+	// Provider-neutral handoff for a ready RTMP credential pair. Providers own
+	// session creation; this method owns validation and the Aitum UI update.
+	void update_aitum_output_for_profile(const QString &profile_id, const QString &output_name,
+		const QString &server, const QString &key, AitumBridge::Completion completion);
+	[[nodiscard]] QString aitum_bridge_result_message(BridgeResult result,
+		const QString &output_name) const;
 	void prepare_output_signing(const QString &profile_id, const QString &output_name,
 		const QString &session_room_id, OutputSigningManager::Completion completion);
 	void refresh_profile_ui(const QString &profile_id);
@@ -97,6 +103,11 @@ private:
 	bool output_in_use_by_another_profile(const Profile &profile) const;
 	void end_unstarted_aitum_session(const QString &profile_id, const QString &output_name);
 	void verify_aitum_output_started(const QString &profile_id, const QString &output_name, int attempt);
+	// Shared final Aitum path for every credential provider: start the named
+	// output only after the provider-neutral credential handoff has completed,
+	// then verify that Aitum reports the encoder as active.
+	void start_aitum_output_and_verify(const QString &profile_id, const QString &output_name,
+		std::function<void(const QString &)> on_start_failure);
 	void start_selected_live();
 	void start_profile_live(const QString &profile_id, bool start_aitum_output);
 	void start_tiktok_studio_live(const QString &profile_id, bool start_aitum_output);
@@ -106,7 +117,7 @@ private:
 	void activate_tiktok_studio_live(const QString &profile_id, const QString &output_name,
 		bool start_aitum_output, TikTokStudioLive live);
 	void prepare_tiktok_studio_output(const QString &profile_id, const QString &output_name,
-		bool start_aitum_output, TikTokStudioLive live, bool aitum_available);
+		bool start_aitum_output, TikTokStudioLive live);
 	void prepare_tiktok_studio_native_output(const QString &profile_id, TikTokStudioLive live);
 	void verify_tiktok_studio_native_output(const QString &profile_id, int attempt);
 	void fail_tiktok_studio_start(const QString &profile_id, const QString &output_name,

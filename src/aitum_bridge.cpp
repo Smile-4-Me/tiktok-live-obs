@@ -6,12 +6,18 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QDateTime>
+#include <QDebug>
 #include <QDialog>
+#include <QDir>
+#include <QFile>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QStandardPaths>
+#include <QTextStream>
 #include <QTimer>
 #include <QToolButton>
 
@@ -19,6 +25,55 @@ namespace {
 
 constexpr int poll_interval_ms = 25;
 constexpr int maximum_polls = 200;
+constexpr qint64 maximum_trace_size_bytes = 128 * 1024;
+
+QString bridge_trace_path()
+{
+	// OBS itself writes its runtime logs below APPDATA on Windows. Prefer that
+	// known, user-visible location so a production build never loses an
+	// important bridge diagnostic behind a Qt application-name variation.
+	const QString obs_app_data = qEnvironmentVariable("APPDATA");
+	if (!obs_app_data.isEmpty()) {
+		const QString log_directory = obs_app_data + QStringLiteral("/obs-studio/logs");
+		QDir().mkpath(log_directory);
+		return log_directory + QStringLiteral("/tiktok-live-obs-aitum-bridge.log");
+	}
+	const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+	QDir directory(base);
+	directory.mkpath(QStringLiteral("tiktok-live-obs"));
+	return directory.filePath(QStringLiteral("tiktok-live-obs/aitum-bridge.log"));
+}
+
+void trace_bridge_event(const QString &event)
+{
+	QFile trace(bridge_trace_path());
+	if (trace.exists() && trace.size() > maximum_trace_size_bytes)
+		trace.remove();
+	if (!trace.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+		return;
+	QTextStream stream(&trace);
+	stream << QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)
+		<< " " << event << '\n';
+}
+
+const char *bridge_result_name(BridgeResult result)
+{
+	switch (result) {
+	case BridgeResult::Success: return "success";
+	case BridgeResult::Busy: return "busy";
+	case BridgeResult::AitumNotAvailable: return "aitum-not-available";
+	case BridgeResult::TargetOutputMissing: return "target-output-missing";
+	case BridgeResult::OutputTabMissing: return "output-tab-missing";
+	case BridgeResult::OutputActionMissing: return "output-action-missing";
+	case BridgeResult::EditorInvalid: return "editor-invalid";
+	case BridgeResult::CredentialUpdateFailed: return "credential-update-failed";
+	case BridgeResult::SaveActionMissing: return "save-action-missing";
+	case BridgeResult::SaveConfirmationTimeout: return "save-confirmation-timeout";
+	case BridgeResult::SaveFailed: return "save-failed";
+	case BridgeResult::SettingsAlreadyOpen: return "settings-already-open";
+	}
+	return "unknown";
+}
 
 QDialog *find_settings_dialog()
 {
@@ -36,7 +91,26 @@ QDialog *find_stream_output_dialog()
 {
 	for (QWidget *widget : QApplication::topLevelWidgets()) {
 		auto *dialog = qobject_cast<QDialog *>(widget);
-		if (dialog && dialog->windowTitle().contains("Aitum Stream Suite:") &&
+		// Aitum may retain a closed editor as a hidden top-level object until the
+		// next UI refresh. Only a visible editor represents an unfinished save.
+		// Treating that hidden object as open causes a false timeout even though
+		// Aitum has already accepted the new server and stream key.
+		if (dialog && dialog->isVisible() && dialog->windowTitle().contains("Aitum Stream Suite:") &&
+		    dialog->windowTitle().contains("Stream Output"))
+			return dialog;
+	}
+	return nullptr;
+}
+
+QDialog *find_owned_stream_output_dialog(QDialog *settings)
+{
+	if (!settings)
+		return nullptr;
+	// Aitum creates the editor with its settings dialog as parent. On some Qt
+	// builds a window-modal child is temporarily absent from topLevelWidgets()
+	// while its exec() loop is starting, although the object is already usable.
+	for (QDialog *dialog : settings->findChildren<QDialog *>()) {
+		if (dialog->windowTitle().contains("Aitum Stream Suite:") &&
 		    dialog->windowTitle().contains("Stream Output"))
 			return dialog;
 	}
@@ -98,7 +172,8 @@ bool set_line_edit_value(QLineEdit *field, const QString &value)
 	// Aitum intentionally stores these fields through textEdited rather than
 	// textChanged. There is no keyboard/mouse injection: this invokes only the
 	// same Qt signal handler Aitum registered for the field.
-	return QMetaObject::invokeMethod(field, "textEdited", Qt::DirectConnection, Q_ARG(QString, value));
+	return QMetaObject::invokeMethod(field, "textEdited", Qt::DirectConnection,
+		Q_ARG(QString, value));
 }
 
 } // namespace
@@ -111,10 +186,15 @@ AitumBridge::AitumBridge(QWidget *obs_main_window, QObject *parent)
 void AitumBridge::update_async(StreamCredentials credentials, Completion completion)
 {
 	if (phase_ != Phase::Idle) {
+		trace_bridge_event(QStringLiteral("result=busy"));
 		completion(BridgeResult::Busy);
 		return;
 	}
 	credentials_ = std::move(credentials);
+	trace_bridge_event(QStringLiteral("begin output=%1 server-present=%2 key-present=%3")
+		.arg(credentials_.target_output, credentials_.server.trimmed().isEmpty() ? QStringLiteral("no") : QStringLiteral("yes"),
+			credentials_.key.trimmed().isEmpty() ? QStringLiteral("no") : QStringLiteral("yes")));
+	qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: updating output" << credentials_.target_output << ".";
 	completion_ = std::move(completion);
 	opened_settings_ = false;
 	retries_ = 0;
@@ -150,6 +230,7 @@ void AitumBridge::find_settings()
 			return;
 		}
 		retries_ = 0;
+		qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: settings dialog found.";
 		open_target_editor();
 		return;
 	}
@@ -157,6 +238,8 @@ void AitumBridge::find_settings()
 		finish(BridgeResult::AitumNotAvailable);
 		return;
 	}
+	if (retries_ == 1)
+		qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: opening Aitum settings.";
 	if (retries_ == 1)
 		start_settings();
 	schedule_next(poll_interval_ms);
@@ -195,6 +278,7 @@ void AitumBridge::open_target_editor()
 		return;
 	}
 	navigation->setCurrentItem(items.front());
+	qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: Output tab selected.";
 	// Aitum constructs the Output page lazily. The settings dialog may already
 	// be visible while the output QGroupBoxes do not exist yet, especially after
 	// a fresh OBS start. Wait for those widgets rather than treating that brief
@@ -220,11 +304,13 @@ void AitumBridge::find_target_output()
 			schedule_next(poll_interval_ms);
 		return;
 	}
+	qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: target output" << credentials_.target_output << "found.";
 	auto *button = find_button(target, aitum_contract::output_settings_button_text);
 	if (!queue_click(button)) {
 		finish(BridgeResult::OutputActionMissing);
 		return;
 	}
+	qWarning().noquote() << "[TikTok Live OBS] Aitum bridge: opening output editor.";
 	retries_ = 0;
 	phase_ = Phase::FindEditDialog;
 	schedule_next(poll_interval_ms);
@@ -234,36 +320,74 @@ void AitumBridge::find_editor()
 {
 	QDialog *dialog = find_stream_output_dialog();
 	if (!dialog) {
+		dialog = find_owned_stream_output_dialog(settings_dialog_.data());
+		if (dialog)
+			trace_bridge_event(QStringLiteral("editor=owned-child-fallback"));
+	}
+	if (!dialog) {
+		if (retries_ == 0 || retries_ == maximum_polls)
+			trace_bridge_event(QStringLiteral("editor=not-found attempt=%1").arg(retries_));
 		if (retries_++ >= maximum_polls)
-			finish(BridgeResult::SaveFailed);
+			finish(BridgeResult::SaveActionMissing);
 		else
 			schedule_next(poll_interval_ms);
 		return;
 	}
 	stream_dialog_ = dialog;
-	const auto fields = dialog->findChildren<QLineEdit *>();
-	if (fields.size() != 3) {
-		finish(BridgeResult::SaveFailed);
+	const auto all_fields = dialog->findChildren<QLineEdit *>();
+	QList<QLineEdit *> fields;
+	for (QLineEdit *field : all_fields) {
+		if (field->isVisible())
+			fields.push_back(field);
+	}
+	// Use visible controls so a helper field from a future Aitum build cannot
+	// shift the name/server/key positions. Fall back to the complete set only
+	// while the editor is still being shown by Qt.
+	if (fields.size() < 3)
+		fields = all_fields;
+	if (fields.size() < 3) {
+		trace_bridge_event(QStringLiteral("editor=invalid-visible-fields count=%1 all=%2")
+			.arg(fields.size()).arg(all_fields.size()));
+		finish(BridgeResult::EditorInvalid);
 		return;
 	}
-	if (!set_line_edit_value(fields.at(1), credentials_.server) ||
-	    !set_line_edit_value(fields.at(2), credentials_.key)) {
-		finish(BridgeResult::SaveFailed);
+	const bool server_updated = set_line_edit_value(fields.at(1), credentials_.server);
+	const bool key_updated = set_line_edit_value(fields.at(2), credentials_.key);
+	if (!server_updated || !key_updated) {
+		trace_bridge_event(QStringLiteral("editor=field-update-failed server=%1 key=%2")
+			.arg(server_updated ? QStringLiteral("ok") : QStringLiteral("failed"),
+				key_updated ? QStringLiteral("ok") : QStringLiteral("failed")));
+		finish(BridgeResult::CredentialUpdateFailed);
 		return;
 	}
-	if (!queue_click(find_button(dialog, aitum_contract::save_output_button_text))) {
-		finish(BridgeResult::SaveFailed);
+	QAbstractButton *save_button = find_button(dialog, aitum_contract::save_output_button_text);
+	if (!queue_click(save_button)) {
+		trace_bridge_event(QStringLiteral("editor=save-button-missing"));
+		finish(BridgeResult::SaveActionMissing);
 		return;
 	}
+	trace_bridge_event(QStringLiteral("editor=updated save=queued enabled=%1")
+		.arg(save_button->isEnabled() ? QStringLiteral("yes") : QStringLiteral("no")));
 	phase_ = Phase::WaitAfterSave;
 	schedule_next(poll_interval_ms);
 }
 
 void AitumBridge::wait_after_save()
 {
-	if (find_stream_output_dialog()) {
+	// Only observe the exact editor opened for this transaction. Looking up all
+	// top-level dialogs again can find an unrelated retained Aitum editor and
+	// report a false failure after this editor has already saved successfully.
+	if (stream_dialog_ && stream_dialog_->isVisible()) {
+		// Aitum's Save Output button only calls QDialog::accept(). If the queued
+		// click has not dismissed the editor after a short grace period, complete
+		// that same documented dialog action directly. The fields were already
+		// committed to Aitum's dialog model through its textEdited handlers.
+		if (retries_ == 8) {
+			trace_bridge_event(QStringLiteral("save=force-accept-after-200ms"));
+			stream_dialog_->accept();
+		}
 		if (retries_++ >= maximum_polls)
-			finish(BridgeResult::SaveFailed);
+			finish(BridgeResult::SaveConfirmationTimeout);
 		else
 			schedule_next(poll_interval_ms);
 		return;
@@ -287,6 +411,8 @@ void AitumBridge::finish(BridgeResult result)
 		else
 			settings_dialog_->reject();
 	}
+	trace_bridge_event(QStringLiteral("result=%1").arg(QString::fromUtf8(bridge_result_name(result))));
+	qWarning().noquote() << "[TikTok Live OBS] Aitum bridge finished:" << bridge_result_name(result) << ".";
 	Completion completion = std::move(completion_);
 	completion_ = {};
 	if (completion)

@@ -109,12 +109,19 @@ void BridgeDock::build_ui()
 
 void BridgeDock::clear_layout(QLayout *layout)
 	{
-		while (QLayoutItem *item = layout->takeAt(0)) {
-			if (QLayout *child_layout = item->layout())
-				clear_layout(child_layout);
-			delete item->widget();
-			delete item;
+	while (QLayoutItem *item = layout->takeAt(0)) {
+		if (QLayout *child_layout = item->layout())
+			clear_layout(child_layout);
+		// A focused editor can emit editingFinished while Qt tears it down. The
+		// detail/profile rebuild paths must never run recursively from that
+		// destruction event, otherwise Qt may still be dispatching the editor's
+		// original input event while its sibling widgets are deleted.
+		if (QWidget *widget = item->widget()) {
+			widget->blockSignals(true);
+			delete widget;
 		}
+		delete item;
+	}
 	}
 
 void BridgeDock::rebuild_profile_list()
@@ -167,16 +174,20 @@ void BridgeDock::show_selected_profile()
 		auto *header_form = new QFormLayout(header);
 		auto *profile_name = new QLineEdit(profile->display_name, header);
 		header_form->addRow(text("Profile.Name"), profile_name);
-		connect(profile_name, &QLineEdit::editingFinished, this, [this, profile_name] {
-			if (Profile *current = selected_profile()) {
-				const QString name = profile_name->text().trimmed();
-				if (!name.isEmpty()) {
-					current->display_name = name;
-					save_profiles();
-					rebuild_profile_list();
-				}
+	const QString profile_id = profile->id;
+	connect(profile_name, &QLineEdit::editingFinished, this, [this, profile_id, profile_name] {
+		if (Profile *current = find_profile(profile_id)) {
+			const QString name = profile_name->text().trimmed();
+			if (!name.isEmpty() && current->display_name != name) {
+				current->display_name = name;
+				save_profiles();
+				// Do not delete/recreate profile-row widgets synchronously from a
+				// QLineEdit focus/return-key event. Qt is still processing that event
+				// and may have references to the affected widget tree.
+				QTimer::singleShot(0, this, [this] { rebuild_profile_list(); });
 			}
-		});
+		}
+	});
 		detail_layout_->addWidget(header);
 
 		switch (profile->state()) {
@@ -592,7 +603,9 @@ void BridgeDock::reconcile_previous_sessions()
 					current->recovering = false;
 					current->preparing = false;
 					if (!live.room_id.isEmpty() && !live.stream_id.isEmpty()) {
-						current->live = true;
+						// TikTok returned a reusable room, not proof that OBS is
+						// currently sending video. Keep it as an unresolved session.
+						current->live = false;
 						current->session_uncertain = true;
 						current->live_id = live.room_id;
 						current->stream_id = live.stream_id;
@@ -618,7 +631,9 @@ void BridgeDock::reconcile_previous_sessions()
 						current->diagnostic = text("Diagnostic.RecoveryCleared");
 						current->diagnostic_error = false;
 					} else {
-						current->live = true;
+						// The remote state could not be confirmed. Do not present an
+						// uncertain reservation as a confirmed LIVE stream.
+						current->live = false;
 						current->session_uncertain = true;
 						current->diagnostic = text("Diagnostic.RecoveryFailed").arg(error);
 						current->diagnostic_error = true;
