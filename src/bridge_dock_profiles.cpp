@@ -552,13 +552,6 @@ void BridgeDock::reconcile_previous_sessions()
 			profile.session_uncertain = false;
 		profile.diagnostic = text("Diagnostic.RecoveryChecking");
 		profile.diagnostic_error = false;
-		if (ProviderRegistry::is_research(profile.provider_id)) {
-			// The localhost listener is deliberately ephemeral. Never restore its
-			// reservation after OBS has restarted.
-			clear_live_session(profile);
-			profile.diagnostic = text("Research.RecoveryCleared");
-			continue;
-		}
 		if (ProviderRegistry::is_manual(profile.provider_id)) {
 			// Manual credentials do not expose a remote session API. After an OBS restart,
 			// use Aitum's observable output state as the source of truth and never keep a
@@ -704,8 +697,6 @@ void BridgeDock::build_login_step(const Profile &profile)
 				current->live = false;
 				current->live_id.clear();
 				current->stream_id.clear();
-				if (ProviderRegistry::is_research(provider_id))
-					current->frame_signing_enabled = false;
 			current->application_status.clear();
 			current->diagnostic.clear();
 			save_profiles();
@@ -722,8 +713,7 @@ void BridgeDock::build_login_step(const Profile &profile)
 	});
 
 		if (ProviderRegistry::uses_local_credentials(profile.provider_id)) {
-			const bool research_provider = ProviderRegistry::is_research(profile.provider_id);
-			layout->addWidget(info_card(text(research_provider ? "Research.Description" : "Manual.Description"), group));
+			layout->addWidget(info_card(text("Manual.Description"), group));
 			auto *manual_form = new QFormLayout();
 			auto *username = new QLineEdit(group);
 			username->setPlaceholderText(text("Manual.UsernamePlaceholder"));
@@ -736,7 +726,7 @@ void BridgeDock::build_login_step(const Profile &profile)
 			manual_form->addRow(text("Manual.Server"), server);
 			manual_form->addRow(text("Manual.Key"), key);
 			layout->addLayout(manual_form);
-			auto *save = new QPushButton(text(research_provider ? "Research.Save" : "Manual.Save"), group);
+			auto *save = new QPushButton(text("Manual.Save"), group);
 			connect(save, &QPushButton::clicked, this, [this, profile_id, username, server, key] {
 				save_local_credentials(profile_id, username->text(), server->text(), key->text());
 			});
@@ -843,21 +833,20 @@ void BridgeDock::save_local_credentials(const QString &profile_id, const QString
 	Profile *profile = find_profile(profile_id);
 	if (!profile || !ProviderRegistry::uses_local_credentials(profile->provider_id))
 		return;
-	const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
 	if (username.trimmed().isEmpty() || server.trimmed().isEmpty() || key.trimmed().isEmpty()) {
-		show_transient_error(text(research_provider ? "Research.MissingFields" : "Manual.MissingFields"));
+		show_transient_error(text("Manual.MissingFields"));
 		return;
 	}
 	if (!TokenStore::save_live_credentials(profile_id, {server.trimmed(), key.trimmed()})) {
-		show_transient_error(text(research_provider ? "Research.SaveFailed" : "Manual.SaveFailed"));
+		show_transient_error(text("Manual.SaveFailed"));
 		return;
 	}
 	profile->tiktok_username = username.trimmed();
 	profile->can_go_live = true;
-	profile->application_status = research_provider ? QStringLiteral("research-local") : QStringLiteral("manual");
+	profile->application_status = QStringLiteral("manual");
 	profile->stream_server = server.trimmed();
 	profile->stream_key = key.trimmed();
-	profile->diagnostic = text(research_provider ? "Research.Saved" : "Manual.Saved");
+	profile->diagnostic = text("Manual.Saved");
 	profile->diagnostic_error = false;
 	save_profiles();
 	rebuild_profile_list();
@@ -930,8 +919,6 @@ void BridgeDock::load_profiles()
 		}
 			profile.mature = settings.value(QStringLiteral("mature"), false).toBool();
 			profile.frame_signing_enabled = settings.value(QStringLiteral("frame_signing_enabled"), false).toBool();
-			if (ProviderRegistry::is_research(profile.provider_id))
-				profile.frame_signing_enabled = false;
 			profile.can_go_live = settings.value(QStringLiteral("can_go_live"), false).toBool();
 			profile.live = settings.value(QStringLiteral("live"), false).toBool();
 			profile.live_id = settings.value(QStringLiteral("live_id")).toString();

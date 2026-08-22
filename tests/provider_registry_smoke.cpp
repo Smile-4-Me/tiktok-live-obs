@@ -17,38 +17,33 @@ int main()
 		return result;
 	}();
 
-	if (providers.size() != ids.size() || ids.size() != 4) {
+	if (providers.size() != ids.size() || ids.size() != 3) {
 		std::cerr << "Provider IDs must be unique and complete.\n";
 		return 1;
 	}
 	if (!ids.contains(ProviderRegistry::tiktok_studio_id()) ||
 		!ids.contains(ProviderRegistry::streamlabs_id()) ||
-		!ids.contains(ProviderRegistry::manual_id()) ||
-		!ids.contains(ProviderRegistry::research_id())) {
+		!ids.contains(ProviderRegistry::manual_id())) {
 		std::cerr << "A required provider is missing from the registry.\n";
 		return 2;
 	}
 	if (!ProviderRegistry::is_known(ProviderRegistry::tiktok_studio_id()) ||
 		!ProviderRegistry::is_known(ProviderRegistry::streamlabs_id()) ||
 		!ProviderRegistry::is_known(ProviderRegistry::manual_id()) ||
-		!ProviderRegistry::is_known(ProviderRegistry::research_id()) ||
 		ProviderRegistry::is_known(QStringLiteral("not-a-provider"))) {
 		std::cerr << "Provider recognition is inconsistent.\n";
 		return 6;
 	}
 	if (ProviderRegistry::uses_local_credentials(ProviderRegistry::tiktok_studio_id()) ||
 		ProviderRegistry::uses_local_credentials(ProviderRegistry::streamlabs_id()) ||
-		!ProviderRegistry::uses_local_credentials(ProviderRegistry::manual_id()) ||
-		!ProviderRegistry::uses_local_credentials(ProviderRegistry::research_id())) {
+		!ProviderRegistry::uses_local_credentials(ProviderRegistry::manual_id())) {
 		std::cerr << "Credential ownership policy is inconsistent.\n";
 		return 3;
 	}
 	if (!ProviderRegistry::is_tiktok_studio(ProviderRegistry::tiktok_studio_id()) ||
 		ProviderRegistry::is_tiktok_studio(ProviderRegistry::streamlabs_id()) ||
 		!ProviderRegistry::is_manual(ProviderRegistry::manual_id()) ||
-		ProviderRegistry::is_manual(ProviderRegistry::research_id()) ||
-		!ProviderRegistry::is_research(ProviderRegistry::research_id()) ||
-		ProviderRegistry::is_research(ProviderRegistry::manual_id())) {
+		ProviderRegistry::is_manual(ProviderRegistry::streamlabs_id())) {
 		std::cerr << "Provider classification is inconsistent.\n";
 		return 4;
 	}

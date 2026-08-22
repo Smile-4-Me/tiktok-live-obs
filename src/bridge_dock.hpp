@@ -8,7 +8,6 @@
 #include "output_signing_manager.hpp"
 #include "profile.hpp"
 #include "provider_registry.hpp"
-#include "research_lab.hpp"
 #include "streamlabs_client.hpp"
 #include "tiktok_studio_client.hpp"
 
@@ -128,7 +127,6 @@ private:
 	AitumBridge bridge_;
 	StreamlabsClient streamlabs_;
 	TikTokStudioClient tiktok_studio_;
-	ResearchLab research_lab_;
 	NativeOutputManager native_output_;
 	OutputSigningManager output_signing_;
 	QTimer *tiktok_studio_heartbeat_timer_ = nullptr;

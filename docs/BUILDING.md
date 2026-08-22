@@ -71,9 +71,7 @@ archives. When patch notes are empty, GitHub generates notes from the commits.
 
 ## Run the native tests
 
-The opt-in tests have no external network dependency. `local-research-harness`
-starts the loopback-only Research Lab, confirms its first heartbeat, then
-confirms clean shutdown. `media-signing-pipeline` parses recorded synthetic
+The opt-in tests have no external network dependency. `media-signing-pipeline` parses recorded synthetic
 RapidAPI response fixtures and validates H.264/HEVC insertion, cadence, cache
 expiry, and preservation of the original encoded access unit.
 `tiktok-studio-protocol` validates the public device-registration envelope and

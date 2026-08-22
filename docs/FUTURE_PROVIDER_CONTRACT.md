@@ -1,8 +1,7 @@
 # Future Provider Contract
 
 This document is the implementation gate for any provider added after
-the experimental `tiktok-studio`, `Streamlabs`, `Manual`, or local-only
-`research-local` provider. It is
+the `tiktok-studio`, `Streamlabs`, or `Manual` provider. It is
 written so a future contributor can decide whether a proposal belongs in this
 project before touching the OBS UI or transport code.
 

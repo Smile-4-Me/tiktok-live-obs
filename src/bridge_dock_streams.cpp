@@ -44,7 +44,6 @@ QString with_secure_storage_error(const QString &message)
 void BridgeDock::build_stream_step(const Profile &profile)
 	{
 		const bool local_provider = ProviderRegistry::uses_local_credentials(profile.provider_id);
-		const bool research_provider = ProviderRegistry::is_research(profile.provider_id);
 		const bool studio_provider = ProviderRegistry::is_tiktok_studio(profile.provider_id);
 		if (studio_provider) {
 			auto *account_group = new QGroupBox(text("Account.Title"), detail_container_);
@@ -146,9 +145,9 @@ void BridgeDock::build_stream_step(const Profile &profile)
 			TokenStore::load_frame_signing_credentials(profile.id);
 		auto *signing_enabled = new QCheckBox(translated_or("Signing.Enable",
 			QStringLiteral("Sign video frames inside OBS (RapidAPI)")), group);
-		signing_enabled->setChecked((studio_provider || profile.frame_signing_enabled) && !research_provider);
-		signing_enabled->setEnabled(!studio_provider && !research_provider && !profile.live && !profile.preparing);
-		signing_enabled->setVisible(!studio_provider && !research_provider);
+		signing_enabled->setChecked(studio_provider || profile.frame_signing_enabled);
+		signing_enabled->setEnabled(!studio_provider && !profile.live && !profile.preparing);
+		signing_enabled->setVisible(!studio_provider);
 		form->addRow(signing_enabled);
 		auto *signing_group = new QGroupBox(translated_or("Signing.Title",
 			QStringLiteral("In-process frame signing")), group);
@@ -169,7 +168,7 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		signing_form->addRow(translated_or("Signing.DeviceId", QStringLiteral("Device ID")), device_id);
 		signing_form->addRow(translated_or("Signing.RoomId", QStringLiteral("Room ID override")), room_id);
 		signing_form->addRow(translated_or("Signing.ApiUrl", QStringLiteral("Signer API URL")), api_url);
-		signing_group->setVisible(!studio_provider && profile.frame_signing_enabled && !research_provider);
+		signing_group->setVisible(!studio_provider && profile.frame_signing_enabled);
 		signing_group->setEnabled(!profile.live && !profile.preparing);
 		form->addRow(signing_group);
 		auto save_signing_credentials = [this, profile_id = profile.id,
@@ -345,10 +344,10 @@ void BridgeDock::build_stream_step(const Profile &profile)
 
 		auto *go_live = new QPushButton(studio_provider
 			? translated_or("Studio.Stream.Start", QStringLiteral("Create TikTok LIVE"))
-			: text(research_provider ? "Research.Start" : (local_provider ? "Manual.Start" : "Stream.Generate")), detail_container_);
+			: text(local_provider ? "Manual.Start" : "Stream.Generate"), detail_container_);
 		auto *end_live = new QPushButton(studio_provider
 			? translated_or("Studio.Stream.End", QStringLiteral("End TikTok LIVE"))
-			: text(research_provider ? "Research.End" : (local_provider ? "Manual.End" : "Stream.End")), detail_container_);
+			: text(local_provider ? "Manual.End" : "Stream.End"), detail_container_);
 		go_live->setEnabled(!profile.preparing && !profile.live && !profile.recovering);
 		end_live->setEnabled(profile.live && !profile.ending && !profile.recovering);
 		connect(go_live, &QPushButton::clicked, this, [this] { start_selected_live(); });
@@ -509,10 +508,6 @@ void BridgeDock::prepare_output_signing(const QString &profile_id, const QString
 			completion(false, QStringLiteral("The selected profile no longer exists."));
 			return;
 		}
-		if (ProviderRegistry::is_research(profile->provider_id) && profile->frame_signing_enabled) {
-			completion(false, QStringLiteral("Frame signing is not available for the localhost-only Research Lab provider."));
-			return;
-		}
 		if (!profile->frame_signing_enabled) {
 			const QString previous_output = profile->frame_signing_output_name.isEmpty()
 				? (profile->frame_signing_uses_main_output ? QString{} : output_name)
@@ -563,8 +558,6 @@ void BridgeDock::end_unstarted_aitum_session(const QString &profile_id, const QS
 			return;
 		}
 		if (ProviderRegistry::uses_local_credentials(profile->provider_id)) {
-			if (ProviderRegistry::is_research(profile->provider_id))
-				research_lab_.stop();
 			clear_live_session(*profile);
 			profile->diagnostic = text("Diagnostic.OutputNotActiveEnded");
 			profile->diagnostic_error = true;
@@ -1193,22 +1186,12 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 					outputs_preparing_.remove(profile->output_name);
 				return;
 			}
-			const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
-			if (research_provider) {
-				QString local_error;
-				if (!research_lab_.start(profile->id, &local_error)) {
-					show_transient_error(text("Research.StartFailed").arg(local_error));
-					if (start_aitum_output)
-						outputs_preparing_.remove(profile->output_name);
-					return;
-				}
-			}
 			profile->preparing = true;
 			profile->live = true;
 			profile->stream_server = credentials.server;
 			profile->stream_key = credentials.key;
 			profile->diagnostic = start_aitum_output ? text("Diagnostic.UpdatingAitum")
-				: text(research_provider ? "Research.SessionReady" : "Manual.SessionReady");
+				: text("Manual.SessionReady");
 			profile->diagnostic_error = false;
 			const QString manual_profile_id = profile->id;
 			const QString manual_output_name = profile->output_name;
@@ -1240,15 +1223,12 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 						}
 						prepared->preparing = false;
 						if (!attached) {
-							if (ProviderRegistry::is_research(prepared->provider_id))
-								research_lab_.stop();
 							clear_live_session(*prepared);
 							prepared->diagnostic = text("Diagnostic.Failed").arg(signing_error);
 							prepared->diagnostic_error = true;
 							show_transient_error(signing_error);
 						} else {
-							prepared->diagnostic = text(ProviderRegistry::is_research(prepared->provider_id)
-								? "Research.SessionReady" : "Manual.SessionReady");
+							prepared->diagnostic = text("Manual.SessionReady");
 							prepared->diagnostic_error = false;
 							if (!aitum_available)
 								show_aitum_missing_notice();
@@ -1267,8 +1247,6 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 					}
 					current->preparing = false;
 					if (result != BridgeResult::Success) {
-						if (ProviderRegistry::is_research(current->provider_id))
-							research_lab_.stop();
 						clear_live_session(*current);
 						current->diagnostic = text("Diagnostic.Failed").arg(text("Error.AitumUpdateFailed"));
 						current->diagnostic_error = true;
@@ -1292,8 +1270,6 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 							}
 							prepared->preparing = false;
 							if (!attached) {
-								if (ProviderRegistry::is_research(prepared->provider_id))
-									research_lab_.stop();
 								clear_live_session(*prepared);
 								prepared->diagnostic = text("Diagnostic.Failed").arg(signing_error);
 								prepared->diagnostic_error = true;
@@ -1304,8 +1280,7 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 								return;
 							}
 							prepared->diagnostic = start_aitum_output ? text("Diagnostic.StartingOutput")
-								: text(ProviderRegistry::is_research(prepared->provider_id)
-									? "Research.SessionReady" : "Manual.SessionReady");
+								: text("Manual.SessionReady");
 							prepared->diagnostic_error = false;
 							save_profiles();
 							refresh_profile_ui(manual_profile_id);
@@ -1317,8 +1292,6 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 								if (!started) {
 									outputs_preparing_.remove(manual_output_name);
 									if (Profile *failed = find_profile(manual_profile_id)) {
-										if (ProviderRegistry::is_research(failed->provider_id))
-											research_lab_.stop();
 										clear_live_session(*failed);
 										failed->diagnostic = text("OneClick.StartFailed").arg(diagnostic);
 										failed->diagnostic_error = true;
@@ -1633,11 +1606,8 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 			return;
 		}
 		if (ProviderRegistry::uses_local_credentials(profile->provider_id)) {
-			const bool research_provider = ProviderRegistry::is_research(profile->provider_id);
-			if (research_provider)
-				research_lab_.stop();
 			clear_live_session(*profile);
-			profile->diagnostic = text(research_provider ? "Research.SessionEnded" : "Manual.SessionEnded");
+			profile->diagnostic = text("Manual.SessionEnded");
 			profile->diagnostic_error = false;
 			save_profiles();
 			refresh_profile_ui(profile_id);

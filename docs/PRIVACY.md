@@ -2,7 +2,7 @@
 
 ## Direct-service design
 
-TikTok Live OBS has no project-owned backend, telemetry service, analytics endpoint, update service, or account database. Depending on the selected provider, the plugin communicates directly with TikTok/LIVE Studio endpoints, Streamlabs, and the configured RapidAPI signer. Its private Research Lab provider uses `127.0.0.1` only.
+TikTok Live OBS has no project-owned backend, telemetry service, analytics endpoint, update service, or account database. Depending on the selected provider, the plugin communicates directly with TikTok/LIVE Studio endpoints, Streamlabs, and the configured RapidAPI signer.
 
 ## What is stored locally
 
@@ -70,9 +70,6 @@ For Streamlabs browser login, the plugin temporarily runs a local callback liste
 
 The plugin does not upload configuration or credentials to a server controlled by this project. RapidAPI and the signer publisher process the request fields above under their own terms and privacy policies; subscribing to or using that service is the user's choice.
 
-The Research Lab provider does not contact TikTok or any external service. It
-starts an ephemeral loopback listener and sends a generic local heartbeat to
-that listener every two seconds while the test session is active.
 
 ## Removing data
 

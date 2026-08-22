@@ -19,7 +19,6 @@ authentication, lifecycle, and data-handling rules.
 | Authorized backend | A project-controlled service holds server credentials and exposes a narrow API to the plugin. | The provider requires confidential server credentials or reliable server-side webhooks. | Adds operations, security, privacy, monitoring, and incident-response duties. |
 | Authorized agency/platform provider | The plugin uses credentials or endpoints supplied by a provider authorized for the account. | The provider documents a supported workflow for user-managed credentials. | Capabilities and terms vary by agency/platform. |
 | RapidAPI gateway | A third-party marketplace/gateway fronts an API offered by its publisher. | Its publisher is authorized and the service contract covers the required workflow. | Adds a third party, key management, usage limits, and dependency risk. |
-| Local Research Lab | No external platform calls; generic localhost lifecycle testing only. | Development before an authorized integration exists. | It cannot create, verify, or operate a platform LIVE session. |
 
 ## What RapidAPI changes — and what it does not
 

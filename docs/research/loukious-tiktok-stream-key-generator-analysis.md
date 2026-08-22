@@ -246,7 +246,7 @@ documentation](https://docs.rapidapi.com/v2.0/docs/additional-request-headers)
 | Python / PySide6 | Standalone desktop UI runtime. | Not needed: our product is a native OBS/Qt plugin. |
 | `requests` / `curl_cffi` | HTTP transport and browser-like session behavior. | Reuse only the generic lesson: isolate HTTP transport and timeouts. Our plugin uses its existing native HTTP stack. |
 | FFmpeg | Local receiving/relaying process. | Not used. OBS' encoded-packet callback provides the insertion point without a listener, child process, or remux pass. |
-| RapidAPI | Hosted signer marketplace/gateway. | Used for LIVE Studio request signatures and in-process frame signatures; Research Lab remains network-isolated. |
+| RapidAPI | Hosted signer marketplace/gateway. | Used for LIVE Studio request signatures and in-process frame signatures. |
 | `pycryptodome` and signing helper files | Platform-specific transformations. | Explicitly excluded. |
 | `truststore` | Certificate-store integration. | The native plugin already uses OS-supported transport on Windows. Multi-platform strategy remains documented separately. |
 
@@ -285,9 +285,7 @@ The included public device-registration envelope, Passport formatting, QR
 binding, and session request shapes are a deliberate later exception to the
 earlier generic-only boundary. The media feature independently constructs the required H.264/HEVC SEI
 envelope around values returned by RapidAPI. It contains no cryptographic or
-signature-generation fallback. The exclusion above also keeps the local
-Research Lab useful independently of TikTok; that provider still has no media
-or external-network path.
+signature-generation fallback.
 
 ## Implemented in-process media boundary
 
@@ -307,49 +305,12 @@ constraints:
 - never start a local server, FFmpeg process, or local signing implementation.
 
 This is a deliberate change from the earlier media exclusion recorded above.
-It does not change the Research Lab boundary or claim official TikTok support.
-
-## Local Research Provider specification
-
-The `research-local` provider is implemented as a private development aid. It
-has no TikTok integration and no external network dependency.
-
-### Inputs
-
-- a human-readable test account label;
-- a locally supplied RTMP target, if an external local RTMP test server is
-  available;
-- a local test stream key; and
-- an automatically generated per-session research identifier.
-
-### Local-only services
-
-| Service | Bind address | Purpose |
-| --- | --- | --- |
-| Research heartbeat mock | `127.0.0.1` only | Receives a generic heartbeat every two seconds and reports scheduling/health status. |
-| Optional RTMP test server | User-selected local service | Receives a test stream; it is not a TikTok proxy and does not alter media. |
-
-### Required behavior
-
-1. Starting a research session starts the local heartbeat service.
-2. The plugin sends generic, non-platform-specific test heartbeats every two
-   seconds.
-3. Any local failure is visible in the profile diagnostic and never reported
-   as a successful external LIVE.
-4. Stopping a session stops timers and local listeners idempotently.
-5. OBS restart clears the local research reservation. The listener is
-   intentionally ephemeral and is never restored as a presumed external LIVE.
-6. No packets are sent to TikTok by this provider.
+It does not claim official TikTok support.
 
 ## Validation matrix
 
 | Test | Expected result |
 | --- | --- |
-| Start Research provider with no Aitum output | Local heartbeat starts; profile shows a local research session, not a TikTok LIVE. |
-| Bind collision on localhost port | Start fails with an explicit local-service diagnostic. |
-| Stop twice | Second stop is safe and does not crash. |
-| Stop and immediately replace a session | A callback from the stopped session cannot alter the replacement session. |
-| Close OBS during active research session | No crash; next start clears the stale local reservation. |
 | Aitum output fails to start | Existing Aitum verification clears the prepared profile state. |
 | Five concurrent profile rows | UI remains compact; profile conflicts are still enforced. |
 | Provider switch during view rebuild | No Qt use-after-free; rebuild is deferred to the next event-loop turn. |
@@ -361,17 +322,9 @@ small and auditable:
 
 | Component | Repository path | Responsibility | Boundary evidence |
 | --- | --- | --- | --- |
-| Provider registry | `src/provider_registry.*` | Stable provider identifiers and capability selection. | `research-local` is distinct from Streamlabs and Manual. |
+| Provider registry | `src/provider_registry.*` | Stable provider identifiers and capability selection. | The registry contains the TikTok LIVE Studio, Streamlabs, and Manual providers. |
 | LIVE Studio provider | `src/tiktok_studio_client.*`, `src/tiktok_studio_device.*`, `src/tiktok_request_signer.*` | Native public device/Passport/session flow plus hosted request signatures. | Request signatures fail closed when RapidAPI is unavailable; the local codec is limited to the public device-registration envelope. |
 | QR/account boundary | `src/tiktok_studio_qr.*`, `src/tiktok_studio_login_dialog.*`, `src/tiktok_studio_account.hpp`, `src/token_store.*` | Client-secret-bound local QR rendering and account-scoped secure persistence. | Cookies/keys/device IDs remain in Windows Credential Manager and can be deleted from the dock. |
-| Local harness | `src/research_lab.*` | Starts a loopback listener on an ephemeral port and sends a generic JSON heartbeat to it every two seconds. | The listener binds to `QHostAddress::LocalHost`; the request target is `127.0.0.1`; no TikTok hostname, request format, or media code exists in this component. |
-| Dock integration | `src/bridge_dock.*` | Shows provider-specific UI, stores local test credentials in the existing secret store, and tears down the harness. | Research sessions are labelled as local research, never as confirmed TikTok LIVE sessions. |
-| Restart recovery | `src/bridge_dock_profiles.cpp` | Clears an old `research-local` reservation on the next OBS start. | A listener is not assumed to survive an OBS restart. |
-
-The harness also uses a monotonically increasing generation number. A reply
-from a stopped session is ignored if a later session has already started. This
-is required because local network callbacks, like any asynchronous callback,
-can outlive the UI event that initiated them.
 
 ### Build verification record
 
@@ -385,11 +338,6 @@ can outlive the UI event that initiated them.
 
 These checks prove only the local software boundary and loadability. They do
 not validate a TikTok integration, and they must never be presented as such.
-
-The repository also contains `tools/verify-research-boundary.ps1`. It verifies
-the loopback-only endpoint, the two-second heartbeat interval, and the absence
-of platform/media/signing categories from the Research Lab source. Run it from
-the repository root before merging changes to `src/research_lab.*`.
 
 ## Open questions for an authorized future integration
 

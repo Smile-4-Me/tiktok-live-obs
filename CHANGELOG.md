@@ -4,6 +4,18 @@ All notable changes are documented here. This project follows the spirit of [Kee
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-22
+
+### Removed
+
+- Removed the discontinued localhost-only Research Lab provider from the provider selector, session lifecycle, profile recovery, build targets, tests, locale catalogs, and current documentation.
+- Removed its private loopback heartbeat harness and the associated boundary-check script. The plugin no longer opens that Research Lab listener.
+
+### Changed
+
+- The provider registry now exposes exactly TikTok LIVE Studio, Streamlabs, and Manual. Manual remains the sole provider using locally supplied stream credentials.
+- Existing profiles whose provider identifier is no longer known continue to use the existing safe fallback to Streamlabs when loaded.
+
 ### Added
 
 - Optional in-process H.264/HEVC frame-signature metadata insertion using OBS 31's encoded-packet callback.

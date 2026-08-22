@@ -163,8 +163,6 @@ add_library(tiktok-live-obs MODULE
 	 src/profile.hpp
 	 src/profile_row.cpp
 	 src/profile_row.hpp
-	 src/research_lab.cpp
-	 src/research_lab.hpp
 	 src/credential_chunks.hpp
 	 src/secure_storage.hpp
 	 ${TIKTOK_SECURE_STORAGE_SOURCE}
@@ -240,27 +238,6 @@ add_custom_command(TARGET tiktok-live-obs POST_BUILD
 
 if(TIKTOK_LIVE_OBS_BUILD_TESTS)
   enable_testing()
-  add_executable(tiktok-live-obs-research-smoke
-    tests/research_lab_smoke.cpp
-    src/research_lab.cpp
-    src/research_lab.hpp
-  )
-  target_include_directories(tiktok-live-obs-research-smoke PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-		${TIKTOK_QT_INCLUDE_DIRS}
-  )
-  target_link_libraries(tiktok-live-obs-research-smoke PRIVATE
-		${TIKTOK_QT_CORE}
-		${TIKTOK_QT_NETWORK}
-  )
-	if(WIN32)
-		target_compile_definitions(tiktok-live-obs-research-smoke PRIVATE UNICODE _UNICODE)
-	endif()
-	if(MSVC)
-		target_compile_options(tiktok-live-obs-research-smoke PRIVATE /Zc:__cplusplus /utf-8)
-	endif()
-  add_test(NAME local-research-harness COMMAND tiktok-live-obs-research-smoke)
-
   add_executable(tiktok-live-obs-provider-registry-smoke
     tests/provider_registry_smoke.cpp
     src/provider_registry.cpp
@@ -356,7 +333,7 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 	endif()
 	add_test(NAME credential-chunk-boundary COMMAND tiktok-live-obs-credential-chunk-test)
 
-	set(TIKTOK_TEST_NAMES local-research-harness provider-registry-harness
+	set(TIKTOK_TEST_NAMES provider-registry-harness
 		media-signing-pipeline tiktok-studio-protocol credential-chunk-boundary)
 	if(WIN32)
 		add_executable(tiktok-live-obs-token-store-smoke

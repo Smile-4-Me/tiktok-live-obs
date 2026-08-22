@@ -57,8 +57,6 @@ credentials to the creator for manual use.
 ## Technical boundaries
 
 - The project has no project-owned production backend today.
-- The private `Research Lab` feature binds only to `127.0.0.1` and tests local
-  scheduling/cleanup. It does not contact TikTok or alter media.
 - The project will not implement undocumented signing, integrity behavior,
   encoder impersonation, or media-frame modification.
 

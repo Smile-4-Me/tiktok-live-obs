@@ -9,7 +9,6 @@ flowchart LR
   Dock --> Profiles["Profile UI and persistence"]
   Dock --> Providers["Provider selection"]
   Providers --> Sessions["LIVE session lifecycle"]
-  Providers --> Research["ResearchLab\nlocalhost-only harness"]
   Dock --> Aitum["AitumBridge / Aitum outputs"]
   Profiles --> Secrets["TokenStore\nNative per-user secret store"]
   Sessions --> Streamlabs["StreamlabsClient\nHTTPS via curl"]
@@ -37,7 +36,6 @@ flowchart LR
 | Profile UI | `bridge_dock_profiles.cpp`, `profile.hpp`, `profile_row.*` | Profile list, login/access state, persisted non-secret metadata. |
 | Stream UI and lifecycle | `bridge_dock_streams.cpp` | Metadata input, provider lifecycle, Aitum update, output verification, recovery. |
 | Provider selection | `provider_registry.*` | Stable provider identifiers and common capability decisions. |
-| Local research harness | `research_lab.*` | A private localhost-only heartbeat test; no TikTok connection or media handling. |
 | Streamlabs transport | `streamlabs_client.*`, `streamlabs_desktop.*` | HTTPS requests and opt-in local Streamlabs Desktop token discovery. |
 | LIVE Studio transport | `tiktok_studio_client.*`, `tiktok_request_signer.*`, `tiktok_studio_device.*` | Native device registration, account-scoped QR login/cookie reuse, eligibility, LIVE creation, heartbeat/end, and hosted request signatures. |
 | LIVE Studio login UI | `tiktok_studio_login_dialog.*`, `tiktok_studio_qr.*`, `tiktok_studio_account.hpp` | Local client-secret-bound QR rendering/polling and the per-account credential model used by the native secret-store backend. |
@@ -57,13 +55,12 @@ flowchart LR
 4. Aitum's accepted start request is not treated as proof of an active output; the output status is verified.
 5. Tokens and generated credentials never enter the profile INI file or log output.
 6. Each OBS installation has its own configuration scope; updates at the same path retain that scope.
-7. The `research-local` provider never represents a local test as a confirmed TikTok LIVE session.
-8. The dock does not start a signing-enabled output until a usable RapidAPI batch is cached; an expired cache or unsupported codec raises an OBS output error and schedules an immediate stop rather than falling back to local signing.
-9. RapidAPI credentials and TikTok signing identifiers stay in the operating system's per-user secret store and never enter profile INI files or logs.
-10. The plugin never computes TikTok request or frame signatures locally and has no signer fallback. The public device-registration envelope is not a request/frame signature and is implemented locally.
-11. LIVE Studio cookies, device/install IDs, and RapidAPI credentials are account-scoped; the profile INI contains only an opaque `account_id` reference.
-12. Once an account has a valid device/install pair, ordinary session updates cannot rotate it; deleting the saved login is the explicit identity-reset boundary.
-13. Restart recovery may inspect and reserve a continuable room, but it never starts an OBS output automatically. Resuming requires an explicit user action that recreates signing and output callbacks.
+7. The dock does not start a signing-enabled output until a usable RapidAPI batch is cached; an expired cache or unsupported codec raises an OBS output error and schedules an immediate stop rather than falling back to local signing.
+8. RapidAPI credentials and TikTok signing identifiers stay in the operating system's per-user secret store and never enter profile INI files or logs.
+9. The plugin never computes TikTok request or frame signatures locally and has no signer fallback. The public device-registration envelope is not a request/frame signature and is implemented locally.
+10. LIVE Studio cookies, device/install IDs, and RapidAPI credentials are account-scoped; the profile INI contains only an opaque `account_id` reference.
+11. Once an account has a valid device/install pair, ordinary session updates cannot rotate it; deleting the saved login is the explicit identity-reset boundary.
+12. Restart recovery may inspect and reserve a continuable room, but it never starts an OBS output automatically. Resuming requires an explicit user action that recreates signing and output callbacks.
 
 ## In-process media path
 

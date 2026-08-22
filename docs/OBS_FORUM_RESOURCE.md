@@ -23,7 +23,6 @@ It can also be used without Aitum. In manual mode, the dock shows the generated 
 - Aitum output selection, automatic credential handoff, and one-click preparation when starting an Aitum output.
 - Safeguards against two profiles using the same TikTok account or output at the same time.
 - Manual credentials from an authorized source, with or without Aitum.
-- A private localhost-only Research Lab that verifies local lifecycle timing without contacting TikTok or altering media.
 - German and English UI.
 
 ### Requirements
@@ -47,7 +46,6 @@ It can also be used without Aitum. In manual mode, the dock shows the generated 
 - The used Streamlabs/TikTok flow is not a public TikTok API contract. It may change, be restricted, or stop working.
 - Please follow the applicable platform rules and use the plugin at your own risk.
 - The repository is currently private and not a public distribution.
-- The Research Lab is not a TikTok integration and does not create or validate external LIVE sessions.
 
 ### Support and source
 

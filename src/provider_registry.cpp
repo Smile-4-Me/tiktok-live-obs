@@ -21,18 +21,11 @@ const QString &ProviderRegistry::manual_id()
 	return id;
 }
 
-const QString &ProviderRegistry::research_id()
-{
-	static const QString id = QStringLiteral("research-local");
-	return id;
-}
-
 QList<ProviderDefinition> ProviderRegistry::available()
 {
 	return {{tiktok_studio_id(), QStringLiteral("Provider.TikTokStudio"), QStringLiteral("TikTok LIVE Studio"), true},
 		{streamlabs_id(), QStringLiteral("Provider.Streamlabs"), QStringLiteral("Streamlabs"), true},
-		{manual_id(), QStringLiteral("Provider.Manual"), QStringLiteral("Manual"), false},
-		{research_id(), QStringLiteral("Provider.Research"), QStringLiteral("Research Lab (localhost)"), false}};
+		{manual_id(), QStringLiteral("Provider.Manual"), QStringLiteral("Manual"), false}};
 }
 
 bool ProviderRegistry::is_known(const QString &provider_id)
@@ -53,12 +46,7 @@ bool ProviderRegistry::is_manual(const QString &provider_id)
 	return provider_id == manual_id();
 }
 
-bool ProviderRegistry::is_research(const QString &provider_id)
-{
-	return provider_id == research_id();
-}
-
 bool ProviderRegistry::uses_local_credentials(const QString &provider_id)
 {
-	return is_manual(provider_id) || is_research(provider_id);
+	return is_manual(provider_id);
 }
