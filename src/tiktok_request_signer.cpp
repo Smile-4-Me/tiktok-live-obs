@@ -3,6 +3,8 @@
 
 #include "tiktok_request_signer.hpp"
 
+#include "localization.hpp"
+
 #include <curl/curl.h>
 
 #include <QJsonDocument>
@@ -42,6 +44,38 @@ QString response_message(const QJsonObject &object)
 			return value.left(500);
 	}
 	return {};
+}
+
+QString rapidapi_rejection_message(long http_status, const QString &detail)
+{
+	const QString normalized = detail.trimmed().toCaseFolded();
+	// RapidAPI normally reports a missing, malformed, or revoked key as 401.
+	// Some gateways use 403 for the same key problem, while others use it for a
+	// missing subscription. Prefer an explicit response message over status.
+	const bool mentions_key = normalized.contains(QStringLiteral("api key")) ||
+		normalized.contains(QStringLiteral("x-rapidapi-key")) ||
+		normalized.contains(QStringLiteral("unauthorized")) ||
+		normalized.contains(QStringLiteral("invalid key"));
+	const bool mentions_subscription = normalized.contains(QStringLiteral("subscribe")) ||
+		normalized.contains(QStringLiteral("subscription")) ||
+		normalized.contains(QStringLiteral("not subscribed"));
+
+	if (http_status == 401 || (http_status == 403 && mentions_key)) {
+		return translated_or("Provider.TikTokStudio.RapidApi.InvalidKey", QStringLiteral(
+			"RapidAPI rejected your API key. Check that you copied the full active key and try again."));
+	}
+	if (http_status == 403 || mentions_subscription) {
+		return translated_or("Provider.TikTokStudio.RapidApi.Subscription", QStringLiteral(
+			"RapidAPI denied access to this signer. Check your API key and confirm that its subscription is active."));
+	}
+	if (http_status == 429 || normalized.contains(QStringLiteral("too many request")) ||
+		normalized.contains(QStringLiteral("rate limit"))) {
+		return translated_or("Provider.TikTokStudio.RapidApi.RateLimited", QStringLiteral(
+			"RapidAPI reported a request limit (HTTP 429). This does not automatically mean that your API key is invalid. Check your RapidAPI dashboard for usage, subscription, and that your API key was entered correctly."));
+	}
+	return detail.isEmpty()
+		? QStringLiteral("RapidAPI rejected the request-signing request (HTTP %1).").arg(http_status)
+		: QStringLiteral("RapidAPI rejected the request-signing request: %1").arg(detail);
 }
 
 QByteArray header_value(const QJsonObject &object, const QString &name)
@@ -142,9 +176,7 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::parse_response(const QByteA
 	if (http_status < 200 || http_status >= 300 ||
 		(!success.isUndefined() && !success.toBool())) {
 		const QString detail = response_message(root);
-		signatures.error = detail.isEmpty()
-			? QStringLiteral("RapidAPI rejected the request-signing request (HTTP %1).").arg(http_status)
-			: QStringLiteral("RapidAPI rejected the request-signing request: %1").arg(detail);
+		signatures.error = rapidapi_rejection_message(http_status, detail);
 		return signatures;
 	}
 	const QJsonObject headers = root.value(QStringLiteral("headers")).isObject()

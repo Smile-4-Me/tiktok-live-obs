@@ -14,6 +14,7 @@
 [[nodiscard]] QByteArray tiktok_session_cookie_header(const QByteArray &netscape_cookie_jar);
 [[nodiscard]] bool tiktok_studio_session_is_stale_error(const QString &error);
 [[nodiscard]] bool tiktok_studio_session_requires_login(const QString &error);
+[[nodiscard]] bool tiktok_studio_session_has_no_live_auth(const QString &error);
 
 // Tolerant protocol readers shared by login, account verification, and LIVE
 // creation. TikTok has returned these identifiers both directly and in nested

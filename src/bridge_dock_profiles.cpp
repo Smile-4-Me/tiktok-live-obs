@@ -14,6 +14,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
+#include <QDesktopServices>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGroupBox>
@@ -25,6 +26,8 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -37,6 +40,23 @@ QString with_secure_storage_error(const QString &message)
 {
 	const QString detail = TokenStore::last_error().trimmed();
 	return detail.isEmpty() ? message : message + QStringLiteral("\n\n") + detail;
+}
+
+QUrl tiktok_live_studio_access_url()
+{
+	// This is TikTok's public LIVE Studio access route. The route identifier is
+	// shared by TikTok's own LIVE Studio client, not tied to a Streamlabs flow.
+	QUrl url(QStringLiteral(
+		"https://www.tiktok.com/falcon/live_g/live_studio_access_routing/index.html"));
+	QUrlQuery query;
+	query.addQueryItem(QStringLiteral("id"), QStringLiteral("AT7395808210055386129"));
+	query.addQueryItem(QStringLiteral("__live_platform__"), QStringLiteral("webcast"));
+	query.addQueryItem(QStringLiteral("hide_nav_bar"), QStringLiteral("1"));
+	query.addQueryItem(QStringLiteral("target_handler"), QStringLiteral("webcast"));
+	query.addQueryItem(QStringLiteral("h5_from"), QStringLiteral("live_studio"));
+	query.addQueryItem(QStringLiteral("lang"), obs_language());
+	url.setQuery(query);
+	return url;
 }
 
 } // namespace
@@ -457,11 +477,14 @@ void BridgeDock::add_tiktok_studio_account_controls(QFormLayout *form,
 			auto *field = new QLineEdit(value, parent);
 			field->setReadOnly(true);
 			form->addRow(label, field);
-		};
-		add_readonly(text("Account.Username"), profile.tiktok_username);
-		add_readonly(text("Account.Status"), profile.application_status);
-		add_readonly(text("Account.CanGoLive"),
-			text(profile.can_go_live ? "Common.True" : "Common.False"));
+	};
+	add_readonly(text("Account.Username"), profile.tiktok_username);
+	add_readonly(text("Account.Status"), account_status_text(profile));
+	const QString live_access = profile.application_status == QStringLiteral("live_access_unknown")
+		? translated_or("Studio.Account.LiveAccessUnknownState",
+			QStringLiteral("LIVE access will be confirmed when you create your first LIVE."))
+		: text(profile.can_go_live ? "Common.True" : "Common.False");
+	add_readonly(text("Account.CanGoLive"), live_access);
 		auto *actions = new QWidget(parent);
 		auto *layout = new QHBoxLayout(actions);
 		layout->setContentsMargins(0, 0, 0, 0);
@@ -479,8 +502,38 @@ void BridgeDock::add_tiktok_studio_account_controls(QFormLayout *form,
 			[this, profile_id = profile.id] { refresh_tiktok_studio_account(profile_id, true); });
 		connect(disconnect, &QPushButton::clicked, this,
 			[this, profile_id = profile.id] { disconnect_tiktok_studio_account(profile_id); });
-		form->addRow(actions);
-	}
+	form->addRow(actions);
+
+	const bool missing_live_access = profile.application_status ==
+		QStringLiteral("tiktok_live_authorization_missing") ||
+		profile.application_status == QStringLiteral("TikTok LIVE authorization missing");
+	const QString access_hint = missing_live_access
+		? translated_or("Studio.Account.ApplyAccessMissing", QStringLiteral(
+			"<b>This TikTok account does not have LIVE access yet.</b><br/>"
+			"Apply directly through TikTok. The page opens in your OBS language when available."))
+		: translated_or("Studio.Account.ApplyAccessHint", QStringLiteral(
+			"No TikTok LIVE access yet? You can apply directly through TikTok."));
+	form->addRow(info_card(access_hint, parent));
+	auto *apply = new QPushButton(translated_or("Studio.Account.ApplyAccess",
+		QStringLiteral("Apply for TikTok LIVE access")), parent);
+	connect(apply, &QPushButton::clicked, this, [] {
+		QDesktopServices::openUrl(tiktok_live_studio_access_url());
+	});
+	form->addRow(apply);
+}
+
+QString BridgeDock::account_status_text(const Profile &profile) const
+{
+	if (!ProviderRegistry::is_tiktok_studio(profile.provider_id))
+		return profile.application_status;
+	if (profile.application_status == QStringLiteral("live_access_unknown"))
+		return translated_or("Studio.Account.LoginSuccessful", QStringLiteral("Sign-in successful"));
+	if (profile.application_status == QStringLiteral("tiktok_live_authorization_missing") ||
+		profile.application_status == QStringLiteral("TikTok LIVE authorization missing"))
+		return translated_or("Studio.Account.LiveAccessMissing",
+			QStringLiteral("This TikTok account is not authorised for LIVE."));
+	return profile.application_status;
+}
 
 void BridgeDock::refresh_selected_account()
 	{

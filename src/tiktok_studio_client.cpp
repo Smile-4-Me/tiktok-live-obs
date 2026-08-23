@@ -15,7 +15,6 @@
 #include <curl/curl.h>
 
 #include <QCryptographicHash>
-#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -812,8 +811,13 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 		eligibility_checked = true;
 		break;
 	}
-	if (!eligibility_checked)
-		result.application_status = QStringLiteral("Connected — LIVE access not verified");
+	if (!eligibility_checked) {
+		// TikTok's read-only account endpoints are unavailable or incomplete for
+		// this session. The create endpoint remains the authoritative check, so
+		// keep the profile usable and disclose the uncertainty in the UI.
+		result.can_go_live = true;
+		result.application_status = QStringLiteral("live_access_unknown");
+	}
 	result.account.cookie_jar = session.cookies();
 	return result;
 }
@@ -913,9 +917,12 @@ PollLoginResult poll_login_sync(TikTokStudioAccountCredentials account, const QS
 	result.poll.state = TikTokStudioQrState::Confirmed;
 	// account_info_sync exports its response cookie jar even on a payload error.
 	result.poll.account = info.account.has_device() ? info.account : account;
-	result.poll.can_go_live = account_error.isEmpty() && info.can_go_live;
+	// QR confirmation proves the account session. If the optional read-only
+	// eligibility lookup fails, allow the user to continue and let TikTok's
+	// create endpoint perform the authoritative entitlement check.
+	result.poll.can_go_live = account_error.isEmpty() ? info.can_go_live : true;
 	result.poll.application_status = account_error.isEmpty()
-		? info.application_status : QStringLiteral("Connected — LIVE access not verified");
+		? info.application_status : QStringLiteral("live_access_unknown");
 	if (result.poll.account.username.isEmpty())
 		result.poll.account.username = QStringLiteral("TikTok account");
 	return result;

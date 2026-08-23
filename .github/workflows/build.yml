@@ -123,9 +123,9 @@ jobs:
         run: |
           $pluginDirectory = "package/obs-plugins/64bit"
           $dataDirectory = "package/data/obs-plugins/tiktok-live-obs"
-          New-Item -ItemType Directory -Force $pluginDirectory, "$dataDirectory/locale" | Out-Null
+          New-Item -ItemType Directory -Force $pluginDirectory, $dataDirectory | Out-Null
           Copy-Item "dist/tiktok-live-obs.dll" $pluginDirectory
-          Copy-Item "data/locale/*.ini" "$dataDirectory/locale"
+          Copy-Item "data/locale" "$dataDirectory/locale" -Recurse
           Copy-Item "LICENSE" $dataDirectory
           Compress-Archive -Path "package/*" -DestinationPath "tiktok-live-obs-$env:BUILD_VERSION-windows-x64.zip"
 

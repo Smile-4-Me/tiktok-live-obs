@@ -106,7 +106,12 @@ QByteArray tiktok_session_cookie_header(const QByteArray &netscape_cookie_jar)
 bool tiktok_studio_session_is_stale_error(const QString &error)
 {
 	const QString normalized = error.trimmed().toLower();
-	return normalized.contains(QStringLiteral("30003")) ||
+	// TikTok's /room/continue/ endpoint uses both 30001 (the room does not
+	// exist) and 30003 (the previous LIVE ended) to signal that no resumable
+	// session is available. Both are normal negative lookup results.
+	return normalized.contains(QStringLiteral("30001")) ||
+		normalized.contains(QStringLiteral("30003")) ||
+		normalized.contains(QStringLiteral("live room does not exist")) ||
 		normalized.contains(QStringLiteral("live has ended")) ||
 		normalized.contains(QStringLiteral("room has finished"));
 }
@@ -119,6 +124,13 @@ bool tiktok_studio_session_requires_login(const QString &error)
 		normalized.contains(QStringLiteral("login required")) ||
 		normalized.contains(QStringLiteral("not logged in")) ||
 		normalized.contains(QStringLiteral("sign in first"));
+}
+
+bool tiktok_studio_session_has_no_live_auth(const QString &error)
+{
+	const QString normalized = error.trimmed().toLower();
+	return normalized.contains(QStringLiteral("20800")) ||
+		normalized.contains(QStringLiteral("no live auth"));
 }
 
 QString tiktok_studio_account_user_id(const QJsonObject &account_data)

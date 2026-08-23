@@ -80,6 +80,7 @@ private:
 	void refresh_tiktok_studio_account(const QString &profile_id, bool report_error = false);
 	void disconnect_tiktok_studio_account(const QString &profile_id);
 	void add_tiktok_studio_account_controls(QFormLayout *form, const Profile &profile, QWidget *parent);
+	[[nodiscard]] QString account_status_text(const Profile &profile) const;
 	void save_local_credentials(const QString &profile_id, const QString &username, const QString &server,
 		const QString &key);
 	void refresh_selected_account();

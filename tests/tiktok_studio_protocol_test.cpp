@@ -93,6 +93,18 @@ int main(int argc, char **argv)
 	ok &= expect(!RapidApiRequestSigner::parse_response(
 		R"({"message":"rate limited"})", 429).error.isEmpty(),
 		"A non-success RapidAPI HTTP status must fail closed.");
+	const TikTokRequestSignatureHeaders invalid_key = RapidApiRequestSigner::parse_response(
+		R"({"message":"Invalid API key"})", 401);
+	ok &= expect(invalid_key.error.contains(QStringLiteral("API key")),
+		"A rejected RapidAPI key should have a specific user-facing error.");
+	const TikTokRequestSignatureHeaders missing_subscription = RapidApiRequestSigner::parse_response(
+		R"({"message":"You are not subscribed to this API."})", 403);
+	ok &= expect(missing_subscription.error.contains(QStringLiteral("subscription")),
+		"A missing RapidAPI subscription should have a specific user-facing error.");
+	const TikTokRequestSignatureHeaders rate_limited = RapidApiRequestSigner::parse_response(
+		R"({"message":"Too many requests"})", 429);
+	ok &= expect(rate_limited.error.contains(QStringLiteral("request limit")),
+		"A RapidAPI rate limit should not be presented as an invalid key.");
 
 	const TikTokStudioEligibility ready = parse_tiktok_studio_eligibility(
 		{{QStringLiteral("golive_locale_restricted"), 0},

@@ -5,6 +5,7 @@
 #include "aitum_outputs.hpp"
 #include "localization.hpp"
 #include "plugin_paths.hpp"
+#include "tiktok_studio_session.hpp"
 #include "tiktok_studio_topics.hpp"
 #include "token_store.hpp"
 
@@ -833,6 +834,13 @@ void BridgeDock::create_tiktok_studio_live_session(const QString &profile_id,
 				error = error.isEmpty() ? save_error : QStringLiteral("%1 (%2)").arg(error, save_error);
 			}
 			if (!error.isEmpty()) {
+				if (tiktok_studio_session_has_no_live_auth(error)) {
+					// The create endpoint is TikTok's authoritative entitlement check.
+					// Some account-info responses report a Studio login before LIVE
+					// creation has actually been authorised for that account.
+					current->can_go_live = false;
+					current->application_status = QStringLiteral("tiktok_live_authorization_missing");
+				}
 				if (!live.room_id.isEmpty() && !live.stream_id.isEmpty() && live.account.has_login()) {
 					current->live = false;
 					current->live_id = live.room_id;

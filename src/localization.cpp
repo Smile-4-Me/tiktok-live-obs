@@ -4,6 +4,7 @@
 #include "localization.hpp"
 #include "native_platform.hpp"
 #include "plugin_paths.hpp"
+#include "provider_registry.hpp"
 
 #include <QDir>
 #include <QFileInfo>
@@ -31,6 +32,39 @@ QString module_locale_directory()
 	return directory.filePath(QStringLiteral("data/locale"));
 }
 
+QString locale_file(const QDir &catalog_directory, const QString &locale)
+{
+	const QString exact_path = catalog_directory.filePath(locale + QStringLiteral(".ini"));
+	if (QFileInfo::exists(exact_path))
+		return exact_path;
+
+	const QString language = locale.section('-', 0, 0);
+	const QString language_path = catalog_directory.filePath(language + QStringLiteral(".ini"));
+	if (QFileInfo::exists(language_path))
+		return language_path;
+
+	return catalog_directory.filePath(QStringLiteral("en-US.ini"));
+}
+
+void merge_catalog(const QDir &catalog_directory, const QString &locale)
+{
+	const QString english_path = catalog_directory.filePath(QStringLiteral("en-US.ini"));
+	if (!QFileInfo::exists(english_path))
+		return;
+
+	QSettings english_settings(english_path, QSettings::IniFormat);
+	for (const QString &key : english_settings.allKeys())
+		translations.insert(key, english_settings.value(key).toString());
+
+	const QString selected_path = locale_file(catalog_directory, locale);
+	if (selected_path.compare(english_path, Qt::CaseInsensitive) == 0)
+		return;
+
+	QSettings selected_settings(selected_path, QSettings::IniFormat);
+	for (const QString &key : selected_settings.allKeys())
+		translations.insert(key, selected_settings.value(key).toString());
+}
+
 } // namespace
 
 QString text(const char *key)
@@ -56,26 +90,20 @@ QString obs_language()
 void load_translations()
 {
 	translations.clear();
-	const QDir locale_directory(module_locale_directory());
-	QSettings english_settings(locale_directory.filePath(QStringLiteral("en-US.ini")),
-		QSettings::IniFormat);
-	for (const QString &key : english_settings.allKeys())
-		translations.insert(key, english_settings.value(key).toString());
+	const QString locale = obs_language();
+	const QDir locale_root(module_locale_directory());
+	const QDir core_directory(locale_root.filePath(QStringLiteral("core")));
 
-	QString locale = obs_language();
-	QString locale_path = locale_directory.filePath(locale + QStringLiteral(".ini"));
-	if (!QFileInfo::exists(locale_path)) {
-		const QString language = locale.section('-', 0, 0);
-		const QString language_path = locale_directory.filePath(language + QStringLiteral(".ini"));
-		locale_path = QFileInfo::exists(language_path)
-			? language_path
-			: locale_directory.filePath(QStringLiteral("en-US.ini"));
+	// Pre-0.1.3 builds shipped one flat locale directory. Retain it as a
+	// compatibility fallback so an in-place DLL update never renders raw keys.
+	merge_catalog(core_directory.exists() ? core_directory : locale_root, locale);
+
+	// Each registered provider owns an isolated catalog. A provider can be added
+	// or removed without changing the core language pack or another provider's
+	// strings. Missing provider translations automatically fall back to English.
+	const QDir providers_directory(locale_root.filePath(QStringLiteral("providers")));
+	for (const ProviderDefinition &provider : ProviderRegistry::available()) {
+		const QDir provider_directory(providers_directory.filePath(provider.id));
+		merge_catalog(provider_directory, locale);
 	}
-
-	if (locale_path.endsWith(QStringLiteral("en-US.ini"), Qt::CaseInsensitive))
-		return;
-
-	QSettings settings(locale_path, QSettings::IniFormat);
-	for (const QString &key : settings.allKeys())
-		translations.insert(key, settings.value(key).toString());
 }

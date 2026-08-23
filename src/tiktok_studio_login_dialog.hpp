@@ -30,13 +30,15 @@ private:
 	void start_login();
 	void poll_login();
 	void cancel_login();
-	void show_retry(const QString &message);
+	void show_retry(const QString &message, bool can_generate_new_code = false);
 
 	TikTokStudioClient *client_ = nullptr;
 	TikTokStudioAccountCredentials account_;
+	QLabel *instructions_ = nullptr;
 	QLabel *qr_code_ = nullptr;
 	QLabel *status_ = nullptr;
 	QPushButton *retry_ = nullptr;
+	QPushButton *close_button_ = nullptr;
 	QTimer *poll_timer_ = nullptr;
 	bool poll_in_flight_ = false;
 	bool closing_ = false;

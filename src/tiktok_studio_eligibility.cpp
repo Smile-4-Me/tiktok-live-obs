@@ -80,8 +80,10 @@ TikTokStudioEligibility parse_tiktok_studio_eligibility(
 		game_data.value(QStringLiteral("has_live_studio_login")));
 
 	TikTokStudioEligibility result;
-	result.can_go_live = !locale_restricted && !banned && !blocked && studio_login;
-	QStringList status{result.can_go_live ? QStringLiteral("Ready") : QStringLiteral("Restricted")};
+	const bool explicitly_restricted = locale_restricted || banned || blocked || !studio_login;
+	result.can_go_live = !explicitly_restricted;
+	QStringList status{explicitly_restricted ? QStringLiteral("Restricted")
+		: QStringLiteral("live_access_unknown")};
 	if (banned)
 		status.push_back(QStringLiteral("Banned"));
 	if (blocked)
