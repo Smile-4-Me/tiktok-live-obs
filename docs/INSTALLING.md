@@ -1,59 +1,49 @@
 # Installing TikTok Live OBS
 
-OBS Studio 31.0 or newer is required. Older OBS releases do not expose the
-encoded-packet callback used by optional in-process frame signing.
+TikTok Live OBS v0.2.0 is distributed as platform archives. It does not modify
+OBS profiles, scene collections, Aitum configuration, or any other plugin.
 
-## Supported installation types
+## Before you start
 
-The Windows installer supports both:
+- Use OBS Studio **31.0 or newer**.
+- Close OBS completely before replacing plugin files.
+- Download the archive for your platform from the matching GitHub release.
+- Optionally verify the archive with the supplied `SHA256SUMS` file.
 
-- a regular OBS Studio installation, commonly under `C:\Program Files\obs-studio`;
-- a portable OBS installation, where `obs64.exe --portable` is used from a custom folder.
+## Windows x64
 
-The installer always displays the OBS folder selection page. Choose the **root OBS folder**: it must contain `bin\64bit\obs64.exe`.
+Extract `tiktok-live-obs-<version>-windows-x64.zip` at your OBS root—the folder
+that contains `bin\64bit\obs64.exe`. Allow the archive's `obs-plugins` and
+`data` folders to merge with the existing ones.
 
-## What the installer changes
-
-For the chosen OBS root, the installer adds only:
-
-```text
-obs-plugins\64bit\tiktok-live-obs.dll
-data\obs-plugins\tiktok-live-obs\locale\de-DE.ini
-data\obs-plugins\tiktok-live-obs\locale\en-US.ini
-```
-
-It does not edit OBS profiles, scene collections, Aitum configuration files, or other plugins.
-
-Administrator rights are required because regular OBS installations are commonly located under `Program Files`. Portable OBS folders outside protected locations still use the same installer behavior for consistency.
-
-## Multiple OBS installations
-
-Each selected OBS folder receives its own Windows Apps entry and its own plugin configuration scope. Installing into a second portable OBS folder does not copy profiles or credentials from the first one.
-
-Installing a newer version into the same selected OBS folder updates the plugin files and keeps that installation's configuration by default.
-
-## Uninstalling
-
-The uninstaller removes the plugin DLL and its locale files from the selected OBS installation. It asks whether to retain plugin configuration:
-
-- **Keep checked:** profiles, account connections, and preferences remain available for a future installation at the same OBS path.
-- **Keep unchecked:** scoped profile and preference files are removed and the matching Windows Credential Manager entries are deleted.
-
-If the OBS folder or plugin files were manually deleted first, use the entry in **Windows Settings → Apps → Installed apps** to run the retained uninstaller. If that entry is also unavailable, reinstall to the same OBS path and then uninstall normally.
-
-## Manual installation
-
-Manual installation is intended for advanced users. Close OBS, then copy:
+After extraction, the important paths are:
 
 ```text
-tiktok-live-obs.dll
-  → <OBS root>\obs-plugins\64bit\
-
-data\locale\de-DE.ini
-  → <OBS root>\data\obs-plugins\tiktok-live-obs\locale\de-DE.ini
-
-data\locale\en-US.ini
-  → <OBS root>\data\obs-plugins\tiktok-live-obs\locale\en-US.ini
+<OBS root>\obs-plugins\64bit\tiktok-live-obs.dll
+<OBS root>\data\obs-plugins\tiktok-live-obs\locale\
+<OBS root>\data\obs-plugins\tiktok-live-obs\assets\
 ```
 
-Restart OBS and open **Docks → TikTok Live OBS**.
+Start OBS and open **Docks → TikTok Live OBS**.
+
+## Ubuntu x86_64 and macOS
+
+Extract the matching `.tar.gz` archive. It contains a self-contained
+`tiktok-live-obs` directory with `bin`, `data`, and `LICENSE`. Copy that
+directory to the plugin location used by your OBS installation, preserving the
+directory structure. See [Platform Support](../PLATFORM_SUPPORT.md) for the
+exact Aitum integration availability on your platform.
+
+## Updating
+
+Replace the module and complete `data` directory with the newer archive. Do not
+copy an archive's configuration because release archives intentionally contain
+none. Your local non-secret profile choices and per-user secrets remain scoped
+to the current OBS installation.
+
+## Removing the plugin
+
+Close OBS, then remove only the `tiktok-live-obs` module and its matching data
+directory. Local configuration and secrets are not included in the plugin data
+directory; remove them only if you explicitly want to clear your local profiles
+and account connections.

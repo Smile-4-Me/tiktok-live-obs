@@ -3,7 +3,7 @@
 
 #include "tiktok_studio_client.hpp"
 
-#include "frame_signing.hpp"
+#include "hosted_signing_service.hpp"
 #include "tiktok_request_signer.hpp"
 #include "tiktok_studio_device.hpp"
 #include "tiktok_studio_eligibility.hpp"
@@ -511,10 +511,10 @@ SignedRequestResult signed_request(CurlSession &session, const TikTokStudioAccou
 	input.encoded_query = query;
 	if (!body.isEmpty())
 		input.body_stub = QCryptographicHash::hash(body, QCryptographicHash::Md5).toHex();
-	FrameSignApiConfig api;
-	api.base_url = QUrl(account.signer_api_url);
-	api.rapidapi_key = account.rapidapi_key;
-	const TikTokRequestSignatureHeaders signatures = RapidApiRequestSigner::fetch(api, input);
+	HostedSigningServiceConfig service;
+	service.base_url = QUrl(account.signer_api_url);
+	service.api_key = account.rapidapi_key;
+	const TikTokRequestSignatureHeaders signatures = RapidApiRequestSigner::fetch(service, input);
 	if (!signatures.valid()) {
 		result.error = signatures.error;
 		return result;
@@ -800,6 +800,15 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 			QStringLiteral("TikTok LIVE access check"));
 		const QString game_error = webcast_error(game.object,
 			QStringLiteral("TikTok LIVE Studio access check"));
+		// A missing LIVE entitlement is already definitive when TikTok returns
+		// status 20800 from the read-only room endpoint. Preserve that result so
+		// "Refresh account" can show the access step before a LIVE is attempted.
+		if (tiktok_studio_session_has_no_live_auth(create_error)) {
+			result.can_go_live = false;
+			result.application_status = QStringLiteral("tiktok_live_authorization_missing");
+			eligibility_checked = true;
+			break;
+		}
 		if (!create_error.isEmpty() || !game_error.isEmpty())
 			continue;
 		const QJsonObject create_data = create.object.value(QStringLiteral("data")).toObject();

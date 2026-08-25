@@ -4,6 +4,52 @@ All notable changes are documented here. This project follows the spirit of [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
+### Highlights
+
+- Introduced a provider-based workflow with **RapidAPI**, **Streamlabs**, and
+  **Manual** credentials. Providers obtain credentials; the shared lifecycle
+  handles the selected Aitum output consistently afterward.
+- Added a QR-based RapidAPI sign-in, account status refresh, TikTok LIVE
+  access guidance, stream topic and game selection, and per-profile secure
+  credential storage.
+- Added one-click Aitum output starts, including a fast path for a single
+  eligible profile and a clear picker only when several profiles can use the
+  same output.
+
+### Changed
+
+- Reworked profile, session, Aitum, provider, localization, and secret-storage
+  code into focused modules with explicit provider contracts.
+- Unified the Streamlabs and RapidAPI Aitum handoff: both use the same output
+  reservation, credential update, start verification, and cleanup path.
+- Replaced the previous built-in TikTok output mode with a simpler workflow:
+  prepare a selected Aitum output or generate credentials for use elsewhere.
+- Expanded the dock and provider UI with consistent wording, status handling,
+  editable profile names, and OBS-style action controls.
+- Split localization into a core catalogue plus provider catalogues so providers
+  can be added or removed without breaking the dock language fallback.
+- Added complete release archives for Windows, Ubuntu, and macOS, including UI
+  assets, locale catalogues, and SHA-256 checksums.
+
+### Fixed
+
+- Prevented stale Aitum output assignments from surviving account-access
+  failures, manual credential resets, or unsuccessful output starts.
+- Prevented conflicting LIVE sessions by reserving both the Aitum output and
+  the TikTok identity across individual starts and Start All.
+- Hardened profile/UI rebuilds and Aitum dialog handling against Qt lifetime
+  issues that could lead to crashes or false save failures.
+- Improved startup deployment checks so a locale layout error or a blocked DLL
+  is reported as an installation problem rather than a misleading success.
+
+### Security
+
+- Profiles contain only non-secret preferences. Tokens, stream credentials,
+  RapidAPI keys, cookies, and device identifiers stay in the operating system's
+  per-user secret store and are not part of this repository or release archive.
+
 ## [0.1.2] - 2026-08-22
 
 ### Added

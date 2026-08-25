@@ -154,7 +154,7 @@ std::optional<SignedVideoCodec> video_codec(const char *name)
 } // namespace
 
 struct OutputSigningManager::Session : std::enable_shared_from_this<OutputSigningManager::Session> {
-	Session(OutputSigningManager *session_owner, QString output_name, FrameSignApiConfig api_config,
+	Session(OutputSigningManager *session_owner, QString output_name, HostedSigningServiceConfig api_config,
 		SignedSeiConfig signing_config)
 		: owner(session_owner), name(std::move(output_name)), api(std::move(api_config)),
 		  signing(std::move(signing_config)), metadata(signing)
@@ -168,7 +168,7 @@ struct OutputSigningManager::Session : std::enable_shared_from_this<OutputSignin
 
 	OutputSigningManager *owner = nullptr;
 	QString name;
-	FrameSignApiConfig api;
+	HostedSigningServiceConfig api;
 	SignedSeiConfig signing;
 	FrameSignInput input;
 	SignedSeiSession metadata;
@@ -229,7 +229,7 @@ void OutputSigningManager::rebind_main_output()
 	obs_api().add_packet_callback(session->output, packet_callback, session.get());
 }
 
-void OutputSigningManager::prepare_and_attach(const QString &output_name, FrameSignApiConfig api,
+void OutputSigningManager::prepare_and_attach(const QString &output_name, HostedSigningServiceConfig api,
 	SignedSeiConfig signing, Completion completion)
 {
 	if (!api.valid()) {

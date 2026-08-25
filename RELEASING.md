@@ -1,42 +1,42 @@
-# Release Checklist
+# Releasing TikTok Live OBS
 
-This checklist is deliberately conservative. A release is ready only when every applicable item is checked against the exact commit that will be tagged.
+This is the short release checklist for maintainers. It applies to the exact
+commit that will become a GitHub tag.
 
-## Source and legal
+## 1. Prepare the source
 
-- [ ] `LICENSE` is present and unchanged from GNU GPL v3.0.
-- [ ] `README.md`, `CHANGELOG.md`, `THIRD_PARTY_NOTICES.md`, `SECURITY.md`, and `docs/` match the release behavior.
-- [ ] No real profile data, tokens, stream keys, callback codes, credentials, logs, crash reports, or private screenshots are staged.
-- [ ] The release binary is built from the same Git commit published as source.
-- [ ] The installer includes the GPL license page and ships only the plugin DLL and locale files.
+- Set a semantic version in `VERSION` (`MAJOR.MINOR.PATCH`).
+- Add a concise entry to `CHANGELOG.md` and a reader-friendly release note in
+  `docs/RELEASE_<version>.md`.
+- Confirm documentation reflects the shipped workflow and platform status.
+- Check that no profile INI, token, cookie, stream key, API key, crash dump, or
+  personal screenshot is staged.
 
-## Build and installer
+## 2. Verify locally
 
-- [ ] Release build succeeds from a clean build directory.
-- [ ] Installer compilation succeeds.
-- [ ] Fresh installation works in a regular OBS installation.
-- [ ] Fresh installation works in a portable OBS installation.
-- [ ] Updating the same OBS installation preserves scoped configuration.
-- [ ] Installing into a second OBS installation starts with independent configuration.
-- [ ] Uninstalling with configuration retention checked preserves configuration.
-- [ ] Uninstalling with configuration retention unchecked removes scoped configuration and credentials.
-- [ ] OBS is closed or Restart Manager handles it before installation updates files.
+- Configure a **clean** Release build with `TIKTOK_LIVE_OBS_BUILD_TESTS=ON`.
+- Build the module and run all CTest tests.
+- Run `tools/verify-reproducible-build.ps1` on Windows when distributing a new
+  native DLL.
+- Install only with `tools/install-local-obs.ps1`; it validates the full locale
+  tree and checks that OBS really loads the copied DLL.
 
-## Functional smoke test
+## 3. Publish the release
 
-- [ ] Dock loads in German OBS and English OBS.
-- [ ] Manual mode works without Aitum.
-- [ ] Aitum output list refreshes and a selected output receives generated credentials.
-- [ ] A new LIVE session can be created and ended.
-- [ ] A failed Aitum output start triggers the session cleanup path.
-- [ ] One-click output start shows a selection only when multiple eligible profiles are linked.
-- [ ] The same TikTok account cannot be selected for two active outputs.
-- [ ] Restart recovery does not falsely claim an unknown session is live.
+1. Push the verified commit to `main`.
+2. In **Actions → Cross-platform build**, run the workflow with `draft`.
+3. Wait for Windows, Ubuntu, and macOS builds and tests to succeed.
+4. Verify that the draft release contains three platform archives and the
+   generated `SHA256SUMS` file.
+5. Replace the draft notes with `docs/RELEASE_<version>.md`, then publish it.
 
-## Publishing
+The workflow creates the `v<version>` tag from the commit it built. Do not create
+the tag manually first.
 
-- [ ] Private GitHub repository contains only intended source and documentation.
-- [ ] A signed or clearly identified release artifact is attached to the matching GitHub tag.
-- [ ] SHA-256 checksum is published for the installer.
-- [ ] Release notes include supported platform, known boundaries, installation steps, and credit links.
-- [ ] OBS Forum resource text has been reviewed against the exact release.
+## 4. After publishing
+
+- Download one archive and inspect its layout: module, complete `data` tree,
+  `LICENSE`, and no configuration files.
+- Verify the checksum file against every release archive.
+- Check the release page, changelog, platform-support statement, and download
+  links once as a signed-out visitor.

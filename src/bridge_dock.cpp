@@ -50,7 +50,7 @@ void trace_aitum_handoff(const QString &event)
 
 BridgeDock::BridgeDock(QWidget *obs_main_window)
 		: QWidget(obs_main_window), bridge_(obs_main_window, this), streamlabs_(this), tiktok_studio_(this),
-		  output_signing_(this)
+		  provider_sessions_(streamlabs_, tiktok_studio_), output_signing_(this)
 	{
 		setObjectName(QStringLiteral("TikTokLiveObsDockContents"));
 		TokenStore::set_storage_scope(installation_storage_scope());
@@ -220,11 +220,18 @@ void BridgeDock::start_all_linked_outputs(const QStringList &outputs)
 		if (choices.empty())
 			return;
 
-		if (choices.size() == 1) {
-			if (Profile *profile = choose_profile_for_output(choices.front().output_name, choices.front().profiles)) {
-				outputs_preparing_.insert(choices.front().output_name);
-				start_profile_live(profile->id, true);
-			}
+	if (choices.size() == 1) {
+		const OutputChoice &choice = choices.front();
+		// Keep Start All consistent with an individual Aitum output button:
+		// a single ready profile needs no redundant chooser, while two or more
+		// profiles still require an explicit account selection.
+		Profile *profile = choice.profiles.size() == 1
+			? choice.profiles.front()
+			: choose_profile_for_output(choice.output_name, choice.profiles);
+		if (profile) {
+			outputs_preparing_.insert(choices.front().output_name);
+			start_profile_live(profile->id, true);
+		}
 			return;
 		}
 

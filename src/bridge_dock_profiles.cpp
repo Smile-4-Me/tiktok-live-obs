@@ -3,18 +3,21 @@
 
 #include "bridge_dock.hpp"
 #include "aitum_outputs.hpp"
+#include "frame_signing_settings.hpp"
 #include "localization.hpp"
-#include "plugin_paths.hpp"
+#include "obs_button_style.hpp"
+#include "profile_repository.hpp"
+#include "profile_account_status.hpp"
+#include "profile_live_session.hpp"
 #include "profile_row.hpp"
 #include "streamlabs_desktop.hpp"
-#include "tiktok_studio_login_dialog.hpp"
 #include "token_store.hpp"
 
 #include <QAbstractButton>
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
-#include <QDesktopServices>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGroupBox>
@@ -24,10 +27,10 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QSettings>
+#include <QSizePolicy>
 #include <QTimer>
-#include <QUrl>
-#include <QUrlQuery>
+#include <QToolBar>
+#include <QToolButton>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -42,21 +45,39 @@ QString with_secure_storage_error(const QString &message)
 	return detail.isEmpty() ? message : message + QStringLiteral("\n\n") + detail;
 }
 
-QUrl tiktok_live_studio_access_url()
+QString provider_display_name(const QString &provider_id)
 {
-	// This is TikTok's public LIVE Studio access route. The route identifier is
-	// shared by TikTok's own LIVE Studio client, not tied to a Streamlabs flow.
-	QUrl url(QStringLiteral(
-		"https://www.tiktok.com/falcon/live_g/live_studio_access_routing/index.html"));
-	QUrlQuery query;
-	query.addQueryItem(QStringLiteral("id"), QStringLiteral("AT7395808210055386129"));
-	query.addQueryItem(QStringLiteral("__live_platform__"), QStringLiteral("webcast"));
-	query.addQueryItem(QStringLiteral("hide_nav_bar"), QStringLiteral("1"));
-	query.addQueryItem(QStringLiteral("target_handler"), QStringLiteral("webcast"));
-	query.addQueryItem(QStringLiteral("h5_from"), QStringLiteral("live_studio"));
-	query.addQueryItem(QStringLiteral("lang"), obs_language());
-	url.setQuery(query);
-	return url;
+	for (const ProviderDefinition &definition : ProviderRegistry::available()) {
+		if (definition.id != provider_id)
+			continue;
+		const QByteArray key = definition.display_name_key.toUtf8();
+		return translated_or(key.constData(), definition.fallback_display_name);
+	}
+	return provider_id;
+}
+
+bool has_manual_credentials(const Profile &profile)
+{
+	const LiveCredentials credentials = TokenStore::load_live_credentials(profile.id);
+	return !credentials.server.trimmed().isEmpty() && !credentials.key.trimmed().isEmpty();
+}
+
+QString visible_tiktok_username(const Profile &profile)
+{
+	QString username = profile.tiktok_username.trimmed();
+	if (username.isEmpty())
+		username = profile.live_tiktok_username.trimmed();
+	while (username.startsWith(QLatin1Char('@')))
+		username.remove(0, 1);
+	if (username.isEmpty())
+		username = translated_or("Profile.UsernameUnknown", QStringLiteral("Unknown"));
+	return QStringLiteral("@%1").arg(username);
+}
+
+QString profile_heading(const Profile &profile)
+{
+	return QStringLiteral("%1 (%2 | %3)")
+		.arg(profile.display_name, provider_display_name(profile.provider_id), visible_tiktok_username(profile));
 }
 
 } // namespace
@@ -190,27 +211,69 @@ void BridgeDock::show_selected_profile()
 		if (!profile)
 			return;
 
-		auto *header = new QGroupBox(text("Profile.Title"), detail_container_);
-		auto *header_form = new QFormLayout(header);
-		auto *profile_name = new QLineEdit(profile->display_name, header);
-		header_form->addRow(text("Profile.Name"), profile_name);
-	const QString profile_id = profile->id;
-	connect(profile_name, &QLineEdit::editingFinished, this, [this, profile_id, profile_name] {
-		if (Profile *current = find_profile(profile_id)) {
-			const QString name = profile_name->text().trimmed();
-			if (!name.isEmpty() && current->display_name != name) {
-				current->display_name = name;
-				save_profiles();
-				// Do not delete/recreate profile-row widgets synchronously from a
-				// QLineEdit focus/return-key event. Qt is still processing that event
-				// and may have references to the affected widget tree.
-				QTimer::singleShot(0, this, [this] { rebuild_profile_list(); });
-			}
-		}
-	});
+		auto *header = new QWidget(detail_container_);
+		auto *header_layout = new QHBoxLayout(header);
+		header_layout->setContentsMargins(0, 0, 0, 0);
+		header_layout->setSpacing(5);
+		auto *heading = new QLabel(profile_heading(*profile), header);
+		heading->setStyleSheet(QStringLiteral("QLabel { font-weight: 600; }"));
+		heading->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+		heading->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+		header_layout->addWidget(heading, 1);
+		const QString rename_label = text("Profile.EditName");
+		// OBS ships no pencil asset. Use its settings icon rather than a
+		// plugin-drawn approximation, keeping the action visually native.
+		auto *rename = obs_button_style::create_native_button(header,
+			obs_button_style::obs_theme_icon(QStringLiteral("cogs.svg"), palette()),
+			rename_label, false);
+		header_layout->addWidget(rename, 0, Qt::AlignVCenter);
+		const QString profile_id = profile->id;
+		connect(rename, &QPushButton::clicked, this,
+			[this, profile_id, header_layout, heading, rename] {
+				Profile *current = find_profile(profile_id);
+				if (!current)
+					return;
+				heading->hide();
+				rename->hide();
+				auto *editor = new QLineEdit(current->display_name, heading->parentWidget());
+				editor->setAccessibleName(text("Profile.Name"));
+				auto *context = new QLabel(
+					QStringLiteral("(%1 | %2)").arg(provider_display_name(current->provider_id),
+						visible_tiktok_username(*current)), heading->parentWidget());
+				context->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
+				header_layout->insertWidget(0, editor, 1);
+				header_layout->insertWidget(1, context);
+				editor->setFocus(Qt::OtherFocusReason);
+				editor->selectAll();
+				connect(editor, &QLineEdit::editingFinished, this,
+					[this, profile_id, editor] {
+						Profile *edited = find_profile(profile_id);
+						if (edited) {
+							const QString name = editor->text().trimmed();
+							if (!name.isEmpty() && edited->display_name != name) {
+								edited->display_name = name;
+								save_profiles();
+							}
+						}
+						// Defer the rebuild until Qt has completed the editor event. This
+						// avoids deleting the signal sender while it is still active.
+						QTimer::singleShot(0, this, [this] {
+							rebuild_profile_list();
+							show_selected_profile();
+						});
+					});
+			});
 		detail_layout_->addWidget(header);
 
-		switch (profile->state()) {
+		// Manual stream credentials are the proof that the user already has LIVE
+		// access. They therefore use one direct setup step, without a redundant
+		// account-status page between entering the URL/key and streaming.
+		if (ProviderRegistry::is_manual(profile->provider_id)) {
+			if (has_manual_credentials(*profile))
+				build_stream_step(*profile);
+			else
+				build_login_step(*profile);
+		} else switch (profile->state()) {
 		case ProfileState::NeedsLogin: build_login_step(*profile); break;
 		case ProfileState::AwaitingLiveAccess: build_account_step(*profile); break;
 		case ProfileState::Ready:
@@ -220,11 +283,16 @@ void BridgeDock::show_selected_profile()
 
 		auto *footer = new QHBoxLayout();
 		footer->addStretch();
-		auto *delete_button = new QPushButton(text("Profile.Delete"), detail_container_);
-		delete_button->setFlat(true);
-		delete_button->setStyleSheet(QStringLiteral("QPushButton { color: #e05d5d; padding: 2px; }"));
-		connect(delete_button, &QPushButton::clicked, this, [this] { delete_selected_profile(); });
-		footer->addWidget(delete_button);
+		const QString delete_label = text("Profile.Delete");
+		auto *delete_action = obs_button_style::create_baseline_icon_button(detail_container_,
+			obs_button_style::plugin_asset_icon(QStringLiteral("garbage-bin-10428.svg")),
+			delete_label);
+		// Use the delete action's own native size hint. It remains the same
+		// height as the edit control but has a width appropriate for its label.
+		delete_action->setFixedSize(delete_action->sizeHint());
+		delete_action->setStyleSheet(QStringLiteral("QPushButton { color: #e05d5d; }"));
+		connect(delete_action, &QPushButton::clicked, this, [this] { delete_selected_profile(); });
+		footer->addWidget(delete_action, 0, Qt::AlignVCenter);
 		detail_layout_->addLayout(footer);
 		detail_layout_->addStretch();
 	}
@@ -241,298 +309,42 @@ void BridgeDock::verify_token_for_profile(const QString &profile_id, const QStri
 	{
 		if (token.isEmpty())
 			return;
-		streamlabs_.verify_account(token, [this, profile_id, token](StreamlabsAccount account, QString error) {
+		Profile *profile = find_profile(profile_id);
+		if (!profile)
+			return;
+		ProviderLifecycle *provider = provider_sessions_.find(profile->provider_id);
+		if (!provider)
+			return;
+
+		// ProviderLifecycle reads the temporary candidate through its normal secret
+		// boundary. Keep the previous credential so an invalid token cannot replace
+		// a working Streamlabs login.
+		const QString previous_token = TokenStore::load(profile_id);
+		if (!TokenStore::save(profile_id, token)) {
+			show_transient_error(with_secure_storage_error(text("Error.TokenSaveFailed")));
+			return;
+		}
+		const ProviderAccountReference account{profile_id, profile->account_id};
+		provider->refresh_account(account,
+			[this, profile_id, previous_token](ProviderAccountStatus status, QString error) {
 			Profile *profile = find_profile(profile_id);
 			if (!profile)
 				return;
 			if (!error.isEmpty()) {
+				if (previous_token.isEmpty())
+					TokenStore::remove(profile_id);
+				else
+					TokenStore::save(profile_id, previous_token);
 				if (selected_profile() == profile)
 					show_transient_error(error);
 				return;
 			}
-			if (!TokenStore::save(profile_id, token)) {
-				show_transient_error(with_secure_storage_error(text("Error.TokenSaveFailed")));
-				return;
-			}
-			profile->tiktok_username = account.username;
-			profile->application_status = account.application_status;
-			profile->can_go_live = account.can_go_live;
+			ProfileAccountStatus::apply(*profile, status);
 			save_profiles();
 			rebuild_profile_list();
 			if (selected_profile() == profile)
 				show_selected_profile();
 		});
-	}
-
-void BridgeDock::begin_tiktok_studio_login(const QString &profile_id, const QString &rapidapi_key)
-	{
-		Profile *profile = find_profile(profile_id);
-		if (!profile || !ProviderRegistry::is_tiktok_studio(profile->provider_id) ||
-			rapidapi_key.trimmed().isEmpty())
-			return;
-		if (profile->account_id.isEmpty())
-			profile->account_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-
-		TikTokStudioAccountCredentials account =
-			TokenStore::load_tiktok_studio_account(profile->account_id);
-		account.rapidapi_key = rapidapi_key.trimmed();
-		if (!TokenStore::save_tiktok_studio_account(profile->account_id, account)) {
-			show_transient_error(with_secure_storage_error(translated_or("Studio.Account.SaveFailed",
-				QStringLiteral("The TikTok login could not be saved securely."))));
-			return;
-		}
-		++tiktok_studio_account_generation_[profile_id];
-
-		TikTokStudioLoginDialog dialog(&tiktok_studio_, account, this);
-		dialog.exec();
-		account = dialog.account();
-		const std::optional<TikTokStudioQrPoll> login = dialog.result();
-		if (!login) {
-			// Preserve a successfully registered device even when the user closes an
-			// otherwise incomplete QR session. The next attempt can reuse it.
-			if (!TokenStore::save_tiktok_studio_account(profile->account_id, account) && account.has_device())
-				show_transient_error(with_secure_storage_error(translated_or("Studio.Account.SaveFailed",
-					QStringLiteral("The TikTok device registration could not be saved securely."))));
-			return;
-		}
-
-		account = login->account;
-		if (!account.has_login() || (account.username.trimmed().isEmpty() &&
-			account.user_id.trimmed().isEmpty())) {
-			show_transient_error(translated_or("Studio.Login.Incomplete",
-				QStringLiteral("TikTok confirmed the QR code but did not return a reusable account session.")));
-			return;
-		}
-		if (!TokenStore::save_tiktok_studio_account(profile->account_id, account)) {
-			show_transient_error(with_secure_storage_error(translated_or("Studio.Account.SaveFailed",
-				QStringLiteral("The TikTok login could not be saved securely."))));
-			return;
-		}
-
-		FrameSigningCredentials signing = TokenStore::load_frame_signing_credentials(profile_id);
-		signing.api_url = account.signer_api_url;
-		signing.rapidapi_key = account.rapidapi_key;
-		signing.uid = account.user_id;
-		signing.device_id = account.device_id;
-		if (!TokenStore::save_frame_signing_credentials(profile_id, signing)) {
-			profile = find_profile(profile_id);
-			if (profile) {
-				profile->tiktok_username = account.username.trimmed().isEmpty()
-					? account.user_id : account.username;
-				profile->application_status = login->application_status;
-				profile->can_go_live = false;
-				profile->frame_signing_enabled = false;
-				profile->diagnostic = translated_or("Signing.SaveFailed",
-					QStringLiteral("The frame-signing credentials could not be saved securely."));
-				profile->diagnostic_error = true;
-				save_profiles();
-				refresh_profile_ui(profile_id);
-			}
-			show_transient_error(with_secure_storage_error(translated_or("Signing.SaveFailed",
-				QStringLiteral("The frame-signing credentials could not be saved securely."))));
-			return;
-		}
-
-		profile = find_profile(profile_id);
-		if (!profile)
-			return;
-		profile->tiktok_username = account.username.trimmed().isEmpty()
-			? account.user_id : account.username;
-		profile->application_status = login->application_status;
-		profile->can_go_live = login->can_go_live;
-		profile->frame_signing_enabled = true;
-		profile->diagnostic = translated_or("Studio.Login.Saved",
-			QStringLiteral("TikTok login and device registration saved securely."));
-		profile->diagnostic_error = false;
-		save_profiles();
-		rebuild_profile_list();
-		if (selected_profile() == profile)
-			show_selected_profile();
-	}
-
-void BridgeDock::refresh_tiktok_studio_account(const QString &profile_id, bool report_error)
-	{
-		Profile *profile = find_profile(profile_id);
-		if (!profile || !ProviderRegistry::is_tiktok_studio(profile->provider_id))
-			return;
-		const TikTokStudioAccountCredentials account =
-			TokenStore::load_tiktok_studio_account(profile->account_id);
-		if (!account.has_login())
-			return;
-		const quint64 generation = tiktok_studio_account_generation_.value(profile_id) + 1;
-		tiktok_studio_account_generation_.insert(profile_id, generation);
-
-		tiktok_studio_.verify_account(account,
-			[this, profile_id, report_error, generation](TikTokStudioAccountInfo info, QString error) {
-				if (tiktok_studio_account_generation_.value(profile_id) != generation)
-					return;
-				Profile *current = find_profile(profile_id);
-				if (!current || !ProviderRegistry::is_tiktok_studio(current->provider_id))
-					return;
-				// Persist the session jar even when TikTok's payload reports an error;
-				// Set-Cookie headers are part of the response and can rotate independently.
-				const bool account_saved = !info.account.has_device() ||
-					TokenStore::save_tiktok_studio_account(current->account_id, info.account);
-				if (!error.isEmpty()) {
-					current->diagnostic = translated_or("Studio.Account.RefreshFailed",
-						QStringLiteral("TikTok account refresh failed: %1")).arg(error);
-					if (!account_saved)
-						current->diagnostic += QStringLiteral(" ") + with_secure_storage_error(
-							translated_or("Studio.Account.SaveFailed",
-								QStringLiteral("The refreshed TikTok login could not be saved securely.")));
-					current->diagnostic_error = true;
-					save_profiles();
-					refresh_profile_ui(profile_id);
-					if (report_error)
-						show_transient_error(error);
-					return;
-				}
-				if (!account_saved) {
-					current->diagnostic = with_secure_storage_error(translated_or("Studio.Account.SaveFailed",
-						QStringLiteral("The refreshed TikTok login could not be saved securely.")));
-					current->diagnostic_error = true;
-					save_profiles();
-					refresh_profile_ui(profile_id);
-					if (report_error)
-						show_transient_error(current->diagnostic);
-					return;
-				}
-				FrameSigningCredentials signing =
-					TokenStore::load_frame_signing_credentials(profile_id);
-				signing.api_url = info.account.signer_api_url;
-				signing.rapidapi_key = info.account.rapidapi_key;
-				signing.uid = info.account.user_id;
-				signing.device_id = info.account.device_id;
-				if (!TokenStore::save_frame_signing_credentials(profile_id, signing)) {
-					current->tiktok_username = info.account.username.trimmed().isEmpty()
-						? info.account.user_id : info.account.username;
-					current->can_go_live = false;
-					current->frame_signing_enabled = false;
-					current->diagnostic = translated_or("Signing.SaveFailed",
-						QStringLiteral("The frame-signing credentials could not be saved securely."));
-					current->diagnostic_error = true;
-					save_profiles();
-					refresh_profile_ui(profile_id);
-					if (report_error)
-						show_transient_error(current->diagnostic);
-					return;
-				}
-				current->tiktok_username = info.account.username.trimmed().isEmpty()
-					? info.account.user_id : info.account.username;
-				current->can_go_live = info.can_go_live;
-				current->application_status = info.application_status;
-				current->frame_signing_enabled = true;
-				current->diagnostic = translated_or("Studio.Account.Refreshed",
-					QStringLiteral("TikTok account refreshed."));
-				current->diagnostic_error = false;
-				save_profiles();
-				refresh_profile_ui(profile_id);
-			});
-	}
-
-void BridgeDock::disconnect_tiktok_studio_account(const QString &profile_id)
-	{
-		Profile *profile = find_profile(profile_id);
-		if (!profile || !ProviderRegistry::is_tiktok_studio(profile->provider_id))
-			return;
-		if (profile->live || profile->preparing || profile->ending || profile->recovering ||
-			profile->session_uncertain) {
-			show_transient_error(translated_or("Studio.Account.ActiveLogout",
-				QStringLiteral("End the active LIVE session before deleting this login.")));
-			return;
-		}
-		if (QMessageBox::question(this,
-			translated_or("Studio.Account.Disconnect", QStringLiteral("Delete TikTok login")),
-			translated_or("Studio.Account.DisconnectConfirm",
-				QStringLiteral("Delete this account's cookies, device registration, and RapidAPI key from Windows Credential Manager?")),
-			QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
-			return;
-
-		++tiktok_studio_account_generation_[profile_id];
-		TokenStore::remove_tiktok_studio_account(profile->account_id);
-		TokenStore::remove_frame_signing_credentials(profile_id);
-		TokenStore::remove_live_credentials(profile_id);
-		profile->tiktok_username.clear();
-		profile->can_go_live = false;
-		profile->frame_signing_enabled = false;
-		profile->application_status.clear();
-		profile->live_id.clear();
-		profile->stream_id.clear();
-		profile->stream_server.clear();
-		profile->stream_key.clear();
-		profile->diagnostic.clear();
-		profile->diagnostic_error = false;
-		save_profiles();
-		rebuild_profile_list();
-		if (selected_profile() == profile)
-			show_selected_profile();
-	}
-
-void BridgeDock::add_tiktok_studio_account_controls(QFormLayout *form,
-	const Profile &profile, QWidget *parent)
-	{
-		if (!ProviderRegistry::is_tiktok_studio(profile.provider_id))
-			return;
-		auto add_readonly = [form, parent](const QString &label, const QString &value) {
-			auto *field = new QLineEdit(value, parent);
-			field->setReadOnly(true);
-			form->addRow(label, field);
-	};
-	add_readonly(text("Account.Username"), profile.tiktok_username);
-	add_readonly(text("Account.Status"), account_status_text(profile));
-	const QString live_access = profile.application_status == QStringLiteral("live_access_unknown")
-		? translated_or("Studio.Account.LiveAccessUnknownState",
-			QStringLiteral("LIVE access will be confirmed when you create your first LIVE."))
-		: text(profile.can_go_live ? "Common.True" : "Common.False");
-	add_readonly(text("Account.CanGoLive"), live_access);
-		auto *actions = new QWidget(parent);
-		auto *layout = new QHBoxLayout(actions);
-		layout->setContentsMargins(0, 0, 0, 0);
-		auto *refresh = new QPushButton(translated_or("Studio.Account.Refresh",
-			QStringLiteral("Refresh account")), actions);
-		auto *disconnect = new QPushButton(translated_or("Studio.Account.Disconnect",
-			QStringLiteral("Delete TikTok login")), actions);
-		const bool account_busy = profile.live || profile.preparing || profile.ending ||
-			profile.recovering || profile.session_uncertain;
-		refresh->setEnabled(!account_busy);
-		disconnect->setEnabled(!account_busy);
-		layout->addWidget(refresh);
-		layout->addWidget(disconnect);
-		connect(refresh, &QPushButton::clicked, this,
-			[this, profile_id = profile.id] { refresh_tiktok_studio_account(profile_id, true); });
-		connect(disconnect, &QPushButton::clicked, this,
-			[this, profile_id = profile.id] { disconnect_tiktok_studio_account(profile_id); });
-	form->addRow(actions);
-
-	const bool missing_live_access = profile.application_status ==
-		QStringLiteral("tiktok_live_authorization_missing") ||
-		profile.application_status == QStringLiteral("TikTok LIVE authorization missing");
-	const QString access_hint = missing_live_access
-		? translated_or("Studio.Account.ApplyAccessMissing", QStringLiteral(
-			"<b>This TikTok account does not have LIVE access yet.</b><br/>"
-			"Apply directly through TikTok. The page opens in your OBS language when available."))
-		: translated_or("Studio.Account.ApplyAccessHint", QStringLiteral(
-			"No TikTok LIVE access yet? You can apply directly through TikTok."));
-	form->addRow(info_card(access_hint, parent));
-	auto *apply = new QPushButton(translated_or("Studio.Account.ApplyAccess",
-		QStringLiteral("Apply for TikTok LIVE access")), parent);
-	connect(apply, &QPushButton::clicked, this, [] {
-		QDesktopServices::openUrl(tiktok_live_studio_access_url());
-	});
-	form->addRow(apply);
-}
-
-QString BridgeDock::account_status_text(const Profile &profile) const
-{
-	if (!ProviderRegistry::is_tiktok_studio(profile.provider_id))
-		return profile.application_status;
-	if (profile.application_status == QStringLiteral("live_access_unknown"))
-		return translated_or("Studio.Account.LoginSuccessful", QStringLiteral("Sign-in successful"));
-	if (profile.application_status == QStringLiteral("tiktok_live_authorization_missing") ||
-		profile.application_status == QStringLiteral("TikTok LIVE authorization missing"))
-		return translated_or("Studio.Account.LiveAccessMissing",
-			QStringLiteral("This TikTok account is not authorised for LIVE."));
-	return profile.application_status;
 }
 
 void BridgeDock::refresh_selected_account()
@@ -577,23 +389,17 @@ void BridgeDock::set_diagnostic(Profile &profile, const QString &message, bool i
 			? (profile.frame_signing_uses_main_output ? QString{} : profile.output_name)
 			: profile.frame_signing_output_name;
 		output_signing_.detach(signing_output);
-		native_output_.remove(profile.id);
-		profile.frame_signing_uses_main_output = false;
-		profile.frame_signing_output_name.clear();
-		profile.live = false;
-		profile.preparing = false;
-		profile.ending = false;
-		profile.recovering = false;
-		profile.session_uncertain = false;
-		profile.live_id.clear();
-		profile.stream_id.clear();
-		profile.stream_server.clear();
-		profile.stream_key.clear();
-		// Locally entered credentials are long-lived user configuration, not a
-		// generated one-time session. Keep them available for the next stream.
-		if (!ProviderRegistry::uses_local_credentials(profile.provider_id))
-			TokenStore::remove_live_credentials(profile.id);
-	}
+		ProfileLiveSession::clear(profile);
+		TokenStore::remove_live_credentials(profile.id);
+		if (ProviderRegistry::uses_local_credentials(profile.provider_id)) {
+			// A manually supplied RTMP pair is valid for one LIVE only. Clearing a
+			// completed or failed session deliberately returns this profile to the
+			// direct credential-entry step instead of reusing old access data.
+			ProfileLiveSession::clear_output_assignment(profile);
+			profile.can_go_live = false;
+			profile.application_status.clear();
+		}
+}
 
 void BridgeDock::refresh_profile_ui(const QString &profile_id)
 	{
@@ -634,47 +440,45 @@ void BridgeDock::reconcile_previous_sessions()
 			continue;
 		}
 		if (ProviderRegistry::is_tiktok_studio(profile.provider_id)) {
-			const TikTokStudioAccountCredentials account =
-				TokenStore::load_tiktok_studio_account(profile.account_id);
-			if (!account.has_login()) {
+			ProviderLifecycle *provider = provider_sessions_.find(profile.provider_id);
+			if (!provider) {
 				profile.recovering = false;
 				profile.session_uncertain = true;
 				profile.diagnostic = text("Diagnostic.RecoveryFailed").arg(
-					translated_or("Studio.Error.MissingLogin", QStringLiteral("The saved TikTok login is missing.")));
+					text("Error.MissingToken"));
 				profile.diagnostic_error = true;
 				continue;
 			}
 			const QString profile_id = profile.id;
-			tiktok_studio_.find_continuable_live(account,
-				[this, profile_id](TikTokStudioLive live, QString error) mutable {
+			const ProviderAccountReference account{profile.id, profile.account_id};
+			provider->find_continuable_live(account,
+				[this, profile_id](PreparedLive live, QString error) mutable {
 					Profile *current = find_profile(profile_id);
 					if (!current || !ProviderRegistry::is_tiktok_studio(current->provider_id))
 						return;
 
-					const bool account_saved = !live.account.has_device() ||
-						TokenStore::save_tiktok_studio_account(current->account_id, live.account);
 					current->recovering = false;
 					current->preparing = false;
 					if (!live.room_id.isEmpty() && !live.stream_id.isEmpty()) {
 						// TikTok returned a reusable room, not proof that OBS is
 						// currently sending video. Keep it as an unresolved session.
+						ProfileLiveSession::mark_uncertain(*current, live);
 						current->live = false;
-						current->session_uncertain = true;
-						current->live_id = live.room_id;
-						current->stream_id = live.stream_id;
-						current->stream_server = live.server;
-						current->stream_key = live.key;
 						const bool credentials_saved = live.server.isEmpty() || live.key.isEmpty() ||
 							TokenStore::save_live_credentials(profile_id, {live.server, live.key});
-						if (error.isEmpty() && account_saved && credentials_saved) {
+						QString signing_error;
+						const bool signing_saved = FrameSigningSettings::synchronize_tiktok_studio_account(
+							profile_id, current->account_id, &signing_error);
+						if (error.isEmpty() && credentials_saved && signing_saved) {
 							current->diagnostic = translated_or("Studio.Recovery.Available", QStringLiteral(
 								"TikTok kept the previous LIVE active. Choose Resume TikTok LIVE to reconnect OBS, or End TikTok LIVE to finish it."));
 							current->diagnostic_error = false;
 						} else {
 							QString reason = error;
-							if (!account_saved || !credentials_saved)
+							if (!credentials_saved || !signing_saved)
 								reason = with_secure_storage_error(translated_or("Studio.Account.SaveFailed",
-									QStringLiteral("The refreshed TikTok session could not be saved securely.")));
+									QStringLiteral("The refreshed TikTok session could not be saved securely."))) +
+									(signing_error.isEmpty() ? QString{} : QStringLiteral(" ") + signing_error);
 							current->diagnostic = translated_or("Studio.Recovery.Incomplete", QStringLiteral(
 								"TikTok reports an existing LIVE, but OBS cannot resume it yet: %1. You can still end it or reset local state.")).arg(reason);
 							current->diagnostic_error = true;
@@ -703,10 +507,8 @@ void BridgeDock::reconcile_previous_sessions()
 				continue;
 			}
 
-			const QString profile_id = profile.id;
-			const QString live_id = profile.live_id;
-			const QString token = TokenStore::load(profile_id);
-			if (token.isEmpty()) {
+			ProviderLifecycle *provider = provider_sessions_.find(profile.provider_id);
+			if (!provider) {
 				profile.recovering = false;
 				profile.session_uncertain = true;
 				profile.diagnostic = text("Diagnostic.RecoveryFailed").arg(text("Error.MissingToken"));
@@ -714,7 +516,11 @@ void BridgeDock::reconcile_previous_sessions()
 				continue;
 			}
 
-			streamlabs_.end_live(token, live_id, [this, profile_id](StreamlabsEndResult result) {
+			const QString profile_id = profile.id;
+			const ProviderAccountReference account{profile.id, profile.account_id};
+			const PreparedLive live{.session_id = profile.live_id, .stream_id = profile.stream_id,
+				.room_id = profile.live_id, .server = profile.stream_server, .key = profile.stream_key};
+			provider->end_live(account, live, [this, profile_id](ProviderEndResult result) {
 				Profile *current = find_profile(profile_id);
 				if (!current)
 					return;
@@ -742,6 +548,8 @@ void BridgeDock::build_login_step(const Profile &profile)
 		auto *group = new QGroupBox(text("Login.Title"), detail_container_);
 		auto *layout = new QVBoxLayout(group);
 		auto *provider_form = new QFormLayout();
+		provider_form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+		provider_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 		auto *provider_choice = new QComboBox(group);
 		for (const ProviderDefinition &provider : ProviderRegistry::available()) {
 			const QByteArray key = provider.display_name_key.toUtf8();
@@ -761,6 +569,7 @@ void BridgeDock::build_login_step(const Profile &profile)
 				if (current->account_id.isEmpty())
 					current->account_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
 				current->tiktok_username.clear();
+				ProfileLiveSession::clear_output_assignment(*current);
 				current->can_go_live = false;
 				current->live = false;
 				current->live_id.clear();
@@ -783,14 +592,16 @@ void BridgeDock::build_login_step(const Profile &profile)
 		if (ProviderRegistry::uses_local_credentials(profile.provider_id)) {
 			layout->addWidget(info_card(text("Manual.Description"), group));
 			auto *manual_form = new QFormLayout();
-			auto *username = new QLineEdit(group);
+			manual_form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+			manual_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+			auto *username = new QLineEdit(profile.tiktok_username, group);
 			username->setPlaceholderText(text("Manual.UsernamePlaceholder"));
 			auto *server = new QLineEdit(group);
 			server->setPlaceholderText(text("Manual.ServerPlaceholder"));
 			auto *key = new QLineEdit(group);
 			key->setPlaceholderText(text("Manual.KeyPlaceholder"));
 			key->setEchoMode(QLineEdit::Password);
-			manual_form->addRow(text("Manual.Username"), username);
+			manual_form->addRow(text("Manual.UsernameOptional"), username);
 			manual_form->addRow(text("Manual.Server"), server);
 			manual_form->addRow(text("Manual.Key"), key);
 			layout->addLayout(manual_form);
@@ -808,6 +619,8 @@ void BridgeDock::build_login_step(const Profile &profile)
 			const TikTokStudioAccountCredentials saved =
 				TokenStore::load_tiktok_studio_account(profile.account_id);
 			auto *studio_form = new QFormLayout();
+			studio_form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+			studio_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 			auto *rapidapi_key = new QLineEdit(saved.rapidapi_key, group);
 			rapidapi_key->setEchoMode(QLineEdit::Password);
 			rapidapi_key->setPlaceholderText(translated_or("Studio.RapidApiKey.Placeholder",
@@ -815,7 +628,12 @@ void BridgeDock::build_login_step(const Profile &profile)
 			studio_form->addRow(translated_or("Studio.RapidApiKey", QStringLiteral("RapidAPI key")), rapidapi_key);
 			layout->addLayout(studio_form);
 			layout->addWidget(info_card(translated_or("Studio.RapidApiKey.Help",
-				QStringLiteral("A key is required before login. <a href=\"https://rapidapi.com/Loukious/api/tiktok-live-studio-api-signer1\">Open the RapidAPI signer page</a>.")), group));
+				QStringLiteral("<b>You need a free RapidAPI key before signing in.</b><br/><br/>"
+					"<a href=\"https://rapidapi.com/Loukious/api/tiktok-live-studio-api-signer1\">"
+					"👉 Set up free Basic access on RapidAPI.</a><br/><br/>"
+					"For a normal individual stream, the free Basic plan is usually enough. "
+					"If you manage several TikTok profiles, you can store the appropriate RapidAPI key "
+					"with each profile to keep them organised.")), group));
 			auto *login = new QPushButton(translated_or("Studio.Login.Button",
 				QStringLiteral("Log in with TikTok QR code")), group);
 			login->setEnabled(!rapidapi_key->text().trimmed().isEmpty());
@@ -875,6 +693,8 @@ void BridgeDock::build_account_step(const Profile &profile)
 	{
 		auto *group = new QGroupBox(text("Account.Title"), detail_container_);
 		auto *form = new QFormLayout(group);
+		form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+		form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 		if (ProviderRegistry::is_tiktok_studio(profile.provider_id)) {
 			add_tiktok_studio_account_controls(form, profile, group);
 		} else {
@@ -884,14 +704,15 @@ void BridgeDock::build_account_step(const Profile &profile)
 				form->addRow(label, field);
 			};
 			add_readonly(text("Account.Username"), profile.tiktok_username);
-			add_readonly(text("Account.Status"), profile.application_status);
+			add_readonly(text("Account.Status"), account_status_text(profile));
 			add_readonly(text("Account.CanGoLive"),
 				text(profile.can_go_live ? "Common.True" : "Common.False"));
 			auto *refresh = new QPushButton(text("Account.Refresh"), group);
 			connect(refresh, &QPushButton::clicked, this, [this] { refresh_selected_account(); });
 			form->addRow(refresh);
+			if (!profile.can_go_live)
+				form->addRow(info_card(text("Account.Instructions"), group));
 		}
-		form->addRow(info_card(text("Account.Instructions"), group));
 		detail_layout_->addWidget(group);
 	}
 
@@ -901,7 +722,7 @@ void BridgeDock::save_local_credentials(const QString &profile_id, const QString
 	Profile *profile = find_profile(profile_id);
 	if (!profile || !ProviderRegistry::uses_local_credentials(profile->provider_id))
 		return;
-	if (username.trimmed().isEmpty() || server.trimmed().isEmpty() || key.trimmed().isEmpty()) {
+	if (server.trimmed().isEmpty() || key.trimmed().isEmpty()) {
 		show_transient_error(text("Manual.MissingFields"));
 		return;
 	}
@@ -909,6 +730,8 @@ void BridgeDock::save_local_credentials(const QString &profile_id, const QString
 		show_transient_error(text("Manual.SaveFailed"));
 		return;
 	}
+	// Manual RTMP credentials do not reliably expose a TikTok username. Keep the
+	// field optional instead of inventing account identity from a stream key.
 	profile->tiktok_username = username.trimmed();
 	profile->can_go_live = true;
 	profile->application_status = QStringLiteral("manual");
@@ -955,80 +778,26 @@ void BridgeDock::delete_selected_profile()
 
 void BridgeDock::load_profiles()
 	{
-	QSettings settings(profiles_settings_path(), QSettings::IniFormat);
-	bool migrated_account_ids = false;
-	bool migrated_topic_ids = false;
-		const int count = settings.beginReadArray(QStringLiteral("profiles"));
-		for (int i = 0; i < count; ++i) {
-			settings.setArrayIndex(i);
-			Profile profile;
-			profile.id = settings.value(QStringLiteral("id")).toString();
-			profile.account_id = settings.value(QStringLiteral("account_id")).toString();
-			if (profile.account_id.isEmpty()) {
-				profile.account_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-				migrated_account_ids = true;
-			}
-			profile.provider_id = settings.value(QStringLiteral("provider_id"), ProviderRegistry::tiktok_studio_id()).toString();
-			// A provider can disappear in a later build. Do not let an orphaned
-			// identifier enter a session path that was never implemented.
-			if (!ProviderRegistry::is_known(profile.provider_id))
-				profile.provider_id = ProviderRegistry::streamlabs_id();
-			profile.display_name = settings.value(QStringLiteral("display_name")).toString();
-			profile.tiktok_username = settings.value(QStringLiteral("tiktok_username")).toString();
-		profile.output_name = settings.value(QStringLiteral("output_name")).toString();
-		profile.stream_title = settings.value(QStringLiteral("stream_title")).toString();
-		profile.hashtag_id = settings.value(QStringLiteral("hashtag_id")).toString();
-		profile.category = settings.value(QStringLiteral("category")).toString();
-		profile.category_id = settings.value(QStringLiteral("category_id")).toString();
-		if (ProviderRegistry::is_tiktok_studio(profile.provider_id) && profile.hashtag_id.isEmpty() &&
-			!profile.category_id.isEmpty()) {
-			profile.hashtag_id = QStringLiteral("5");
-			migrated_topic_ids = true;
-		}
-			profile.mature = settings.value(QStringLiteral("mature"), false).toBool();
-			profile.frame_signing_enabled = settings.value(QStringLiteral("frame_signing_enabled"), false).toBool();
-			profile.can_go_live = settings.value(QStringLiteral("can_go_live"), false).toBool();
-			profile.live = settings.value(QStringLiteral("live"), false).toBool();
-			profile.live_id = settings.value(QStringLiteral("live_id")).toString();
-			profile.stream_id = settings.value(QStringLiteral("stream_id")).toString();
-			const LiveCredentials credentials = TokenStore::load_live_credentials(profile.id);
-			profile.stream_server = credentials.server;
-			profile.stream_key = credentials.key;
-			profile.application_status = settings.value(QStringLiteral("application_status")).toString();
-			if (!profile.id.isEmpty() && !profile.display_name.isEmpty())
-				profiles_.push_back(profile);
-		}
-		settings.endArray();
-	if (migrated_account_ids || migrated_topic_ids)
-		save_profiles();
+	profiles_ = ProfileRepository::load();
+	bool changed = false;
+	for (Profile &profile : profiles_) {
+		const ProfileState state = profile.state();
+		if (state != ProfileState::NeedsLogin && state != ProfileState::AwaitingLiveAccess)
+			continue;
+		if (profile.output_name.isEmpty() && !profile.frame_signing_uses_main_output &&
+			profile.frame_signing_output_name.isEmpty())
+			continue;
+		// Older versions could leave an Aitum selection attached after a profile
+		// returned to setup. Enforce the same invariant during migration so the
+		// profile list cannot advertise a stale output link after an upgrade.
+		ProfileLiveSession::clear_output_assignment(profile);
+		changed = true;
+	}
+	if (changed)
+		ProfileRepository::save(profiles_);
 	}
 
 void BridgeDock::save_profiles() const
 	{
-		QSettings settings(profiles_settings_path(), QSettings::IniFormat);
-		settings.clear();
-		settings.beginWriteArray(QStringLiteral("profiles"), static_cast<int>(profiles_.size()));
-		for (int i = 0; i < static_cast<int>(profiles_.size()); ++i) {
-			const Profile &profile = profiles_.at(i);
-			settings.setArrayIndex(i);
-			settings.setValue(QStringLiteral("id"), profile.id);
-			settings.setValue(QStringLiteral("account_id"), profile.account_id);
-			settings.setValue(QStringLiteral("provider_id"), profile.provider_id);
-			settings.setValue(QStringLiteral("display_name"), profile.display_name);
-			settings.setValue(QStringLiteral("tiktok_username"), profile.tiktok_username);
-		settings.setValue(QStringLiteral("output_name"), profile.output_name);
-		settings.setValue(QStringLiteral("stream_title"), profile.stream_title);
-		settings.setValue(QStringLiteral("hashtag_id"), profile.hashtag_id);
-		settings.setValue(QStringLiteral("category"), profile.category);
-			settings.setValue(QStringLiteral("category_id"), profile.category_id);
-			settings.setValue(QStringLiteral("mature"), profile.mature);
-			settings.setValue(QStringLiteral("frame_signing_enabled"), profile.frame_signing_enabled);
-			settings.setValue(QStringLiteral("can_go_live"), profile.can_go_live);
-			settings.setValue(QStringLiteral("live"), profile.live);
-			settings.setValue(QStringLiteral("live_id"), profile.live_id);
-			settings.setValue(QStringLiteral("stream_id"), profile.stream_id);
-			settings.setValue(QStringLiteral("application_status"), profile.application_status);
-		}
-		settings.endArray();
-		settings.sync();
+	ProfileRepository::save(profiles_);
 	}

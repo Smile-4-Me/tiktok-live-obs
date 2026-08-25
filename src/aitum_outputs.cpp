@@ -202,7 +202,8 @@ bool aitum_output_is_active(const QString &output_name, bool *active, QString *d
 	return true;
 }
 
-bool aitum_start_output(const QString &output_name, QString *diagnostic)
+bool aitum_trigger_output_action(const QString &output_name, const char *request_type,
+	const char *action_label, QString *diagnostic)
 {
 	auto set_diagnostic = [diagnostic](const QString &message) {
 		if (diagnostic)
@@ -254,7 +255,7 @@ bool aitum_start_output(const QString &output_name, QString *diagnostic)
 		return false;
 	}
 	const QJsonObject request_data{{QStringLiteral("vendorName"), QStringLiteral("aitum-stream-suite")},
-		{QStringLiteral("requestType"), QStringLiteral("start_output")},
+		{QStringLiteral("requestType"), QString::fromLatin1(request_type)},
 		{QStringLiteral("requestData"), QJsonObject{{QStringLiteral("output"), output_name}}}};
 	const QByteArray request_json = QJsonDocument(request_data).toJson(QJsonDocument::Compact);
 	calldata_t request = {};
@@ -262,27 +263,31 @@ bool aitum_start_output(const QString &output_name, QString *diagnostic)
 	set_string(&request, "request_data", request_json.constData());
 	if (!call(websocket, "call_request", &request)) {
 		free_calldata(&request);
-		set_diagnostic(QStringLiteral("OBS WebSocket could not call Aitum's start request."));
+		set_diagnostic(QStringLiteral("OBS WebSocket could not call Aitum's %1 request.")
+			.arg(QString::fromLatin1(action_label)));
 		return false;
 	}
 	auto *response = static_cast<WebsocketResponse *>(get_ptr(&request, "response"));
-	bool started = false;
+	bool succeeded = false;
 	QString response_diagnostic;
 	if (response && response->status_code == 100 && response->response_data) {
 		const QJsonDocument document = QJsonDocument::fromJson(QByteArray(response->response_data));
 		bool vendor_success = true;
 		if (find_success(document.object(), &vendor_success))
-			started = vendor_success;
+			succeeded = vendor_success;
 		else
-			started = true;
-		if (!started)
-			response_diagnostic = QStringLiteral("Aitum could not start the selected output.");
+			succeeded = true;
+		if (!succeeded)
+			response_diagnostic = QStringLiteral("Aitum could not %1 the selected output.")
+				.arg(QString::fromLatin1(action_label));
 	} else if (response) {
 		response_diagnostic = response->comment && response->comment[0]
 			? QString::fromUtf8(response->comment)
-			: QStringLiteral("Aitum rejected the start request (status %1).").arg(response->status_code);
+			: QStringLiteral("Aitum rejected the %1 request (status %2).")
+				.arg(QString::fromLatin1(action_label)).arg(response->status_code);
 	} else {
-		response_diagnostic = QStringLiteral("OBS WebSocket returned no response for Aitum's start request.");
+		response_diagnostic = QStringLiteral("OBS WebSocket returned no response for Aitum's %1 request.")
+			.arg(QString::fromLatin1(action_label));
 	}
 	if (response) {
 		if (response->comment)
@@ -292,9 +297,19 @@ bool aitum_start_output(const QString &output_name, QString *diagnostic)
 		free_memory(response);
 	}
 	free_calldata(&request);
-	if (!started)
+	if (!succeeded)
 		set_diagnostic(response_diagnostic);
 	else if (diagnostic)
 		diagnostic->clear();
-	return started;
+	return succeeded;
+}
+
+bool aitum_start_output(const QString &output_name, QString *diagnostic)
+{
+	return aitum_trigger_output_action(output_name, "start_output", "start", diagnostic);
+}
+
+bool aitum_stop_output(const QString &output_name, QString *diagnostic)
+{
+	return aitum_trigger_output_action(output_name, "stop_output", "stop", diagnostic);
 }

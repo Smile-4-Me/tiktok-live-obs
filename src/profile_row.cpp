@@ -61,8 +61,9 @@ void ProfileRow::set_profile(const Profile &profile, bool selected)
 	QString line = profile.display_name;
 	if (!profile.tiktok_username.isEmpty())
 		line += QStringLiteral(" (@%1)").arg(profile.tiktok_username);
-	if (!profile.output_name.isEmpty())
+	if (!profile.output_name.isEmpty()) {
 		line += QStringLiteral("  |  %1").arg(profile.output_name);
+	}
 	button_->setText(line);
 	button_->setStyleSheet(QStringLiteral(
 		"QPushButton { text-align: left; border: 0; padding: 4px; border-radius: 3px; %1 }"

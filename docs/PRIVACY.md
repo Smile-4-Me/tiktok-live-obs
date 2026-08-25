@@ -75,4 +75,4 @@ The plugin does not upload configuration or credentials to a server controlled b
 
 Use **Delete TikTok login** in the account panel to remove that account's cookies, device registration, RapidAPI key, and signing credentials. Deleting a profile also removes its credentials (and its account credential set when no other profile references it). During uninstallation, uncheck **Keep plugin configuration** to remove the selected OBS installation's scoped configuration and matching credential entries.
 
-Deleting an OBS folder alone does not automatically remove Windows Credential Manager entries. Use the plugin uninstaller, or remove the relevant entries manually from Windows Credential Manager if needed.
+Deleting an OBS folder alone does not automatically remove Windows Credential Manager entries. Remove the relevant entries manually from Windows Credential Manager if you want to clear those credentials.

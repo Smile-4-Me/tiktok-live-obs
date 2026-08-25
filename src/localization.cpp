@@ -4,7 +4,6 @@
 #include "localization.hpp"
 #include "native_platform.hpp"
 #include "plugin_paths.hpp"
-#include "provider_registry.hpp"
 
 #include <QDir>
 #include <QFileInfo>
@@ -98,12 +97,15 @@ void load_translations()
 	// compatibility fallback so an in-place DLL update never renders raw keys.
 	merge_catalog(core_directory.exists() ? core_directory : locale_root, locale);
 
-	// Each registered provider owns an isolated catalog. A provider can be added
-	// or removed without changing the core language pack or another provider's
-	// strings. Missing provider translations automatically fall back to English.
+	// Provider catalogs are discovered from disk instead of constructing the
+	// provider registry during OBS module initialization. This keeps locale
+	// startup independent from provider static initialization and lets packaged
+	// providers be added or removed without touching the core language pack.
 	const QDir providers_directory(locale_root.filePath(QStringLiteral("providers")));
-	for (const ProviderDefinition &provider : ProviderRegistry::available()) {
-		const QDir provider_directory(providers_directory.filePath(provider.id));
+	const QStringList provider_ids = providers_directory.entryList(
+		QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+	for (const QString &provider_id : provider_ids) {
+		const QDir provider_directory(providers_directory.filePath(provider_id));
 		merge_catalog(provider_directory, locale);
 	}
 }

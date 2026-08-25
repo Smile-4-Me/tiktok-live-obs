@@ -88,11 +88,11 @@ QByteArray header_value(const QJsonObject &object, const QString &name)
 
 } // namespace
 
-TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const FrameSignApiConfig &api,
+TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const HostedSigningServiceConfig &service,
 	const TikTokRequestSignatureInput &input)
 {
 	TikTokRequestSignatureHeaders signatures;
-	if (!api.valid()) {
+	if (!service.valid()) {
 		signatures.error = QStringLiteral("A valid RapidAPI signer key and HTTPS endpoint are required.");
 		return signatures;
 	}
@@ -102,7 +102,7 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const FrameSignApiCon
 		return signatures;
 	}
 
-	QUrl endpoint = api.base_url;
+	QUrl endpoint = service.base_url;
 	QString path = endpoint.path();
 	if (!path.endsWith(QLatin1Char('/')))
 		path += QLatin1Char('/');
@@ -125,7 +125,7 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const FrameSignApiCon
 	}
 	curl_slist *headers = nullptr;
 	const QByteArray host = endpoint.host().toUtf8();
-	const QByteArray rapidapi_key = api.rapidapi_key.toUtf8();
+	const QByteArray rapidapi_key = service.api_key.toUtf8();
 	headers = curl_slist_append(headers, "Accept: application/json");
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 	headers = curl_slist_append(headers, (QByteArray("X-RapidAPI-Key: ") + rapidapi_key).constData());
@@ -158,7 +158,7 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const FrameSignApiCon
 	}
 	signatures = parse_response(result.body, result.status);
 	if (!signatures.error.isEmpty())
-		signatures.error.replace(api.rapidapi_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
+		signatures.error.replace(service.api_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
 	return signatures;
 }
 

@@ -26,3 +26,8 @@ bool aitum_output_is_active(const QString &output_name, bool *active, QString *d
 // This follows the same output-specific action that Aitum exposes to external
 // integrations and does not depend on screen coordinates or mouse injection.
 bool aitum_start_output(const QString &output_name, QString *diagnostic = nullptr);
+
+// Stops one Aitum output through the matching published vendor request. This
+// is used by the dock's End LIVE action so the selected encoder is disconnected
+// before the provider closes its remote TikTok session.
+bool aitum_stop_output(const QString &output_name, QString *diagnostic = nullptr);

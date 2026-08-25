@@ -9,7 +9,7 @@
 
 int main()
 {
-	const QList<ProviderDefinition> providers = ProviderRegistry::available();
+	const QList<ProviderDefinition> &providers = ProviderRegistry::available();
 	const QSet<QString> ids = [&providers] {
 		QSet<QString> result;
 		for (const ProviderDefinition &provider : providers)
@@ -54,6 +54,22 @@ int main()
 			std::cerr << "Provider definitions require a complete UI identity.\n";
 			return 5;
 		}
+	}
+
+	const ProviderDefinition *manual = ProviderRegistry::find(ProviderRegistry::manual_id());
+	const ProviderDefinition *streamlabs = ProviderRegistry::find(ProviderRegistry::streamlabs_id());
+	const ProviderDefinition *studio = ProviderRegistry::find(ProviderRegistry::tiktok_studio_id());
+	if (!manual || !streamlabs || !studio ||
+		manual->capabilities.session != ProviderSessionKind::LocalCredentials ||
+		streamlabs->capabilities.session != ProviderSessionKind::RemoteSession ||
+		studio->capabilities.authentication != ProviderAuthenticationKind::QrCode ||
+		studio->capabilities.frame_signing != FrameSigningRequirement::Required ||
+		streamlabs->capabilities.frame_signing != FrameSigningRequirement::Optional ||
+		manual->capabilities.frame_signing != FrameSigningRequirement::Optional ||
+		ProviderRegistry::frame_signing_requirement(QStringLiteral("not-a-provider")) !=
+			FrameSigningRequirement::NotSupported) {
+		std::cerr << "Provider capabilities do not describe the active implementations.\n";
+		return 7;
 	}
 
 	std::cout << "Provider Registry smoke test passed.\n";

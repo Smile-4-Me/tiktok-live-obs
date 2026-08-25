@@ -144,18 +144,39 @@ add_library(tiktok-live-obs MODULE
 	 src/aitum_outputs.hpp
 	 src/bridge_dock.cpp
 	 src/bridge_dock.hpp
+	 src/bridge_dock_aitum_lifecycle.cpp
 	 src/bridge_dock_profiles.cpp
 	 src/bridge_dock_streams.cpp
+	 src/bridge_dock_tiktok_studio_account.cpp
+	 src/bridge_dock_tiktok_studio_native.cpp
 	 src/frame_signing.cpp
 	 src/frame_signing.hpp
+	 src/frame_signing_credentials.hpp
+	 src/frame_signing_settings.cpp
+	 src/frame_signing_settings.hpp
+	 src/hosted_signing_service.hpp
 	 src/localization.cpp
 	 src/localization.hpp
 	 src/native_platform.cpp
 	 src/native_platform.hpp
-	 src/native_output_manager.cpp
-	 src/native_output_manager.hpp
-	 src/output_signing_manager.cpp
-	 src/output_signing_manager.hpp
+	src/output_signing_manager.cpp
+	src/output_signing_manager.hpp
+	src/profile_account_status.cpp
+	src/profile_account_status.hpp
+	src/profile_repository.cpp
+	src/profile_repository.hpp
+	src/profile_live_session.cpp
+	src/profile_live_session.hpp
+	 src/providers/manual_provider.cpp
+	 src/providers/manual_provider.hpp
+	 src/providers/provider_lifecycle.cpp
+	 src/providers/provider_lifecycle.hpp
+	 src/providers/provider_session_router.cpp
+	 src/providers/provider_session_router.hpp
+	 src/providers/streamlabs_provider.cpp
+	 src/providers/streamlabs_provider.hpp
+	 src/providers/tiktok_studio_provider.cpp
+	 src/providers/tiktok_studio_provider.hpp
 	 src/plugin_paths.cpp
 	 src/plugin_paths.hpp
 	 src/provider_registry.cpp
@@ -197,6 +218,7 @@ add_library(tiktok-live-obs MODULE
 )
 
 target_include_directories(tiktok-live-obs PRIVATE
+	"${CMAKE_CURRENT_SOURCE_DIR}/src"
 	"${CMAKE_CURRENT_SOURCE_DIR}/generated"
 	${TIKTOK_QT_INCLUDE_DIRS}
   "${OBS_SOURCE_DIR}/libobs"
@@ -219,6 +241,11 @@ if(WIN32)
 endif()
 if(MSVC)
   target_compile_options(tiktok-live-obs PRIVATE /Zc:__cplusplus /utf-8)
+  # Local OBS development builds must not receive a different DLL identity solely
+  # because MSVC chose a new incremental-link layout. Smart App Control evaluates
+  # each native DLL independently, so stable inputs should produce a stable file.
+  # /Brepro removes the PE timestamp; /INCREMENTAL:NO avoids state from prior links.
+  target_link_options(tiktok-live-obs PRIVATE /Brepro /INCREMENTAL:NO)
 endif()
 
 set_target_properties(tiktok-live-obs PROPERTIES
@@ -262,6 +289,7 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 		tests/media_signing_test.cpp
 		src/frame_signing.cpp
 		src/frame_signing.hpp
+		src/hosted_signing_service.hpp
 		src/sei_metadata.cpp
 		src/sei_metadata.hpp
 	)
@@ -283,8 +311,10 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 
 	add_executable(tiktok-live-obs-studio-protocol-test
 		tests/tiktok_studio_protocol_test.cpp
+		tests/localization_stub.cpp
 		src/frame_signing.cpp
 		src/frame_signing.hpp
+		src/hosted_signing_service.hpp
 		src/tiktok_request_signer.cpp
 		src/tiktok_request_signer.hpp
 		src/tiktok_studio_device.cpp
@@ -333,8 +363,51 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 	endif()
 	add_test(NAME credential-chunk-boundary COMMAND tiktok-live-obs-credential-chunk-test)
 
+	add_executable(tiktok-live-obs-profile-live-session-test
+		tests/profile_live_session_test.cpp
+		src/profile.hpp
+		src/profile_live_session.cpp
+		src/profile_live_session.hpp
+		src/provider_contract.hpp
+	)
+	target_include_directories(tiktok-live-obs-profile-live-session-test PRIVATE
+		"${CMAKE_CURRENT_SOURCE_DIR}/src"
+		${TIKTOK_QT_INCLUDE_DIRS}
+	)
+	target_link_libraries(tiktok-live-obs-profile-live-session-test PRIVATE ${TIKTOK_QT_CORE})
+	if(WIN32)
+		target_compile_definitions(tiktok-live-obs-profile-live-session-test PRIVATE UNICODE _UNICODE)
+	endif()
+	if(MSVC)
+		target_compile_options(tiktok-live-obs-profile-live-session-test PRIVATE /Zc:__cplusplus /utf-8)
+	endif()
+	add_test(NAME profile-live-session-transitions COMMAND tiktok-live-obs-profile-live-session-test)
+
+	add_executable(tiktok-live-obs-profile-account-status-test
+		tests/profile_account_status_test.cpp
+		src/profile.hpp
+		src/profile_account_status.cpp
+		src/profile_account_status.hpp
+		src/profile_live_session.cpp
+		src/profile_live_session.hpp
+		src/provider_contract.hpp
+	)
+	target_include_directories(tiktok-live-obs-profile-account-status-test PRIVATE
+		"${CMAKE_CURRENT_SOURCE_DIR}/src"
+		${TIKTOK_QT_INCLUDE_DIRS}
+	)
+	target_link_libraries(tiktok-live-obs-profile-account-status-test PRIVATE ${TIKTOK_QT_CORE})
+	if(WIN32)
+		target_compile_definitions(tiktok-live-obs-profile-account-status-test PRIVATE UNICODE _UNICODE)
+	endif()
+	if(MSVC)
+		target_compile_options(tiktok-live-obs-profile-account-status-test PRIVATE /Zc:__cplusplus /utf-8)
+	endif()
+	add_test(NAME profile-account-status-mapping COMMAND tiktok-live-obs-profile-account-status-test)
+
 	set(TIKTOK_TEST_NAMES provider-registry-harness
-		media-signing-pipeline tiktok-studio-protocol credential-chunk-boundary)
+		media-signing-pipeline tiktok-studio-protocol credential-chunk-boundary
+		profile-live-session-transitions profile-account-status-mapping)
 	if(WIN32)
 		add_executable(tiktok-live-obs-token-store-smoke
 			tests/token_store_smoke.cpp
@@ -373,7 +446,35 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 		endif()
 		add_test(NAME secure-storage-roundtrip COMMAND tiktok-live-obs-secure-storage-test)
 		list(APPEND TIKTOK_TEST_NAMES token-store-harness secure-storage-roundtrip)
-		set_tests_properties(${TIKTOK_TEST_NAMES} PROPERTIES
-			ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_IMPORT_LIB_DIR}/../bin")
+		# QT_IMPORT_LIB_DIR only contains import libraries in the local OBS
+		# dependency bundle. A full Qt runtime is needed only by the developer
+		# test executables, never by the installed OBS module. Prefer an explicit
+		# path, then a normal OBS installation. Do not select an incomplete Qt
+		# build tree: it commonly has Qt6Core.dll but not Qt6Gui.dll.
+		set(TIKTOK_QT_RUNTIME_DIR "" CACHE PATH
+			"Qt runtime directory used by local CTest executables")
+		if(NOT (EXISTS "${TIKTOK_QT_RUNTIME_DIR}/Qt6Core.dll" AND
+			EXISTS "${TIKTOK_QT_RUNTIME_DIR}/Qt6Gui.dll"))
+			get_filename_component(TIKTOK_QT_BUILD_ROOT "${QT_HEADERS_DIR}" DIRECTORY)
+			set(TIKTOK_QT_RUNTIME_CANDIDATES
+				"$ENV{OBS_QT_RUNTIME_DIR}"
+				"$ENV{ProgramFiles}/obs-studio/bin/64bit"
+				"${TIKTOK_QT_BUILD_ROOT}/bin")
+			foreach(TIKTOK_QT_RUNTIME_CANDIDATE IN LISTS TIKTOK_QT_RUNTIME_CANDIDATES)
+				if(EXISTS "${TIKTOK_QT_RUNTIME_CANDIDATE}/Qt6Core.dll" AND
+					EXISTS "${TIKTOK_QT_RUNTIME_CANDIDATE}/Qt6Gui.dll")
+					set(TIKTOK_QT_RUNTIME_DIR "${TIKTOK_QT_RUNTIME_CANDIDATE}" CACHE PATH
+						"Qt runtime directory used by local CTest executables" FORCE)
+					break()
+				endif()
+			endforeach()
+		endif()
+		if(EXISTS "${TIKTOK_QT_RUNTIME_DIR}/Qt6Core.dll" AND
+			EXISTS "${TIKTOK_QT_RUNTIME_DIR}/Qt6Gui.dll")
+			set_tests_properties(${TIKTOK_TEST_NAMES} PROPERTIES
+				ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${TIKTOK_QT_RUNTIME_DIR}")
+		else()
+			message(WARNING "Qt runtime not found for local CTest executables. Set TIKTOK_QT_RUNTIME_DIR to a directory containing Qt6Core.dll and Qt6Gui.dll.")
+		endif()
 	endif()
 endif()

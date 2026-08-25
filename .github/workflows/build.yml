@@ -125,7 +125,9 @@ jobs:
           $dataDirectory = "package/data/obs-plugins/tiktok-live-obs"
           New-Item -ItemType Directory -Force $pluginDirectory, $dataDirectory | Out-Null
           Copy-Item "dist/tiktok-live-obs.dll" $pluginDirectory
-          Copy-Item "data/locale" "$dataDirectory/locale" -Recurse
+          # Keep the release payload aligned with CMake's post-build data copy.
+          # Locales and UI assets are both runtime dependencies.
+          Copy-Item "data/*" $dataDirectory -Recurse
           Copy-Item "LICENSE" $dataDirectory
           Compress-Archive -Path "package/*" -DestinationPath "tiktok-live-obs-$env:BUILD_VERSION-windows-x64.zip"
 
@@ -184,7 +186,7 @@ jobs:
           test -n "${binary}"
           mkdir -p package/tiktok-live-obs/bin/64bit package/tiktok-live-obs/data
           cp "${binary}" package/tiktok-live-obs/bin/64bit/
-          cp -R data/locale package/tiktok-live-obs/data/
+          cp -R data/. package/tiktok-live-obs/data/
           cp LICENSE package/tiktok-live-obs/
           tar -C package -czf "tiktok-live-obs-${BUILD_VERSION}-ubuntu-x86_64.tar.gz" tiktok-live-obs
 
@@ -242,7 +244,7 @@ jobs:
           test -n "${binary}"
           mkdir -p package/tiktok-live-obs/bin package/tiktok-live-obs/data
           cp "${binary}" package/tiktok-live-obs/bin/
-          cp -R data/locale package/tiktok-live-obs/data/
+          cp -R data/. package/tiktok-live-obs/data/
           cp LICENSE package/tiktok-live-obs/
           tar -C package -czf "tiktok-live-obs-${BUILD_VERSION}-macos.tar.gz" tiktok-live-obs
 
@@ -283,11 +285,18 @@ jobs:
           PATCH_NOTES: ${{ inputs.patch_notes }}
         run: |
           shopt -s nullglob
-          assets=(release-assets/*)
-          if (( ${#assets[@]} != 3 )); then
-            echo "::error::Expected three platform archives, found ${#assets[@]}."
+          platform_assets=(release-assets/*)
+          if (( ${#platform_assets[@]} != 3 )); then
+            echo "::error::Expected three platform archives, found ${#platform_assets[@]}."
             exit 1
           fi
+
+          checksum_file="release-assets/tiktok-live-obs-${RELEASE_VERSION}-SHA256SUMS.txt"
+          (
+            cd release-assets
+            sha256sum ./* > "$(basename "${checksum_file}")"
+          )
+          assets=(release-assets/*)
 
           release_args=(
             --repo "${GITHUB_REPOSITORY}"

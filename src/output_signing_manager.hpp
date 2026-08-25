@@ -32,7 +32,7 @@ public:
 	// Fetches a five-minute RapidAPI batch off the UI/encoder threads, then
 	// attaches the OBS packet callback before the selected output starts. An
 	// empty output name selects OBS' main streaming output.
-	void prepare_and_attach(const QString &output_name, FrameSignApiConfig api,
+	void prepare_and_attach(const QString &output_name, HostedSigningServiceConfig api,
 		SignedSeiConfig signing, Completion completion);
 	void detach(const QString &output_name);
 	void detach_all();

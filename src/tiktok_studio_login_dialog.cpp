@@ -28,8 +28,8 @@ TikTokStudioLoginDialog::TikTokStudioLoginDialog(TikTokStudioClient *client,
 
 	instructions_ = new QLabel(translated_or("Studio.Login.QrGuide", QStringLiteral(
 		"<b>Scan the code to sign in</b><br/><br/>"
-		"Use your phone camera to scan the QR code. Or open TikTok and go to "
-		"<b>Profile</b> → <b>Menu</b> → <b>My QR code</b> → <b>Scan</b>.")), this);
+		"Use your phone camera to scan the QR code. Or open TikTok and go to:<br/><br/>"
+		"<b>\"TikTok app\" → \"Profile\" → ☰ → \"My QR code\" → ⌗</b>")), this);
 	instructions_->setWordWrap(true);
 	instructions_->setTextFormat(Qt::RichText);
 	instructions_->setStyleSheet(QStringLiteral("QLabel { color: palette(text); font-size: 14px; }"));
@@ -46,6 +46,7 @@ TikTokStudioLoginDialog::TikTokStudioLoginDialog(TikTokStudioClient *client,
 	status_->setAlignment(Qt::AlignCenter);
 	status_->setWordWrap(true);
 	status_->setOpenExternalLinks(true);
+	status_->setVisible(false);
 	layout->addWidget(status_);
 
 	retry_ = new QPushButton(translated_or("Studio.Login.NewCode", QStringLiteral("Generate a new QR code")), this);
@@ -103,14 +104,14 @@ void TikTokStudioLoginDialog::start_login()
 	instructions_->setVisible(true);
 	instructions_->setText(translated_or("Studio.Login.QrGuide", QStringLiteral(
 		"<b>Scan the code to sign in</b><br/><br/>"
-		"Use your phone camera to scan the QR code. Or open TikTok and go to "
-		"<b>Profile</b> → <b>Menu</b> → <b>My QR code</b> → <b>Scan</b>.")));
+		"Use your phone camera to scan the QR code. Or open TikTok and go to:<br/><br/>"
+		"<b>\"TikTok app\" → \"Profile\" → ☰ → \"My QR code\" → ⌗</b>")));
 	qr_code_->setVisible(true);
 	qr_code_->clear();
 	qr_code_->setText(translated_or("Studio.Login.PreparingDevice",
 		QStringLiteral("Preparing this device…")));
-	status_->setText(translated_or("Studio.Login.LoadingCode",
-		QStringLiteral("Requesting a secure QR code…")));
+	status_->clear();
+	status_->setVisible(false);
 
 	QPointer<TikTokStudioLoginDialog> guard(this);
 	client_->begin_qr_login(account_, [guard](TikTokStudioQrCode code, QString error) {
@@ -133,8 +134,8 @@ void TikTokStudioLoginDialog::start_login()
 		guard->account_ = std::move(code.account);
 		guard->qr_code_->setPixmap(image.scaled(guard->qr_code_->contentsRect().size(),
 			Qt::KeepAspectRatio, Qt::SmoothTransformation));
-		guard->status_->setText(translated_or("Studio.Login.ScanCode",
-			QStringLiteral("Open TikTok on your phone and scan the code.")));
+		guard->status_->clear();
+		guard->status_->setVisible(false);
 		guard->poll_timer_->start();
 	});
 }
@@ -157,12 +158,13 @@ void TikTokStudioLoginDialog::poll_login()
 		}
 		switch (poll.state) {
 		case TikTokStudioQrState::Waiting:
-			guard->status_->setText(translated_or("Studio.Login.ScanCode",
-				QStringLiteral("Open TikTok on your phone and scan the code.")));
+			guard->status_->clear();
+			guard->status_->setVisible(false);
 			break;
 		case TikTokStudioQrState::Scanned:
 			guard->status_->setText(translated_or("Studio.Login.ConfirmPhone",
 				QStringLiteral("Code scanned. Confirm the login on your phone.")));
+			guard->status_->setVisible(true);
 			break;
 		case TikTokStudioQrState::Expired:
 			guard->show_retry(translated_or("Studio.Login.Expired",
@@ -203,6 +205,7 @@ void TikTokStudioLoginDialog::show_retry(const QString &message, bool can_genera
 			"<a href=\"https://rapidapi.com/Loukious/api/tiktok-live-studio-api-signer1\">Open the RapidAPI signer page</a>"));
 		status_->setText(QStringLiteral("<p>%1</p><p>%2</p>").arg(message.toHtmlEscaped(), help));
 	}
+	status_->setVisible(true);
 	// Only a QR code that was created but then expired or could not be decoded
 	// can be generated again within this dialog. Request/API errors must first
 	// be resolved outside the dialog, so do not present a misleading retry.

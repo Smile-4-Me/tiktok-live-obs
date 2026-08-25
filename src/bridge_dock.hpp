@@ -4,10 +4,10 @@
 #pragma once
 
 #include "aitum_bridge.hpp"
-#include "native_output_manager.hpp"
 #include "output_signing_manager.hpp"
 #include "profile.hpp"
 #include "provider_registry.hpp"
+#include "providers/provider_session_router.hpp"
 #include "streamlabs_client.hpp"
 #include "tiktok_studio_client.hpp"
 
@@ -31,9 +31,10 @@ class QTimer;
 class QWidget;
 class QVBoxLayout;
 
-// The dock coordinates account state, Streamlabs session lifecycle, and the
-// optional Aitum output bridge. UI construction and session logic live in
-// separate implementation units to keep reviewable responsibilities small.
+// The dock coordinates account state, provider-neutral LIVE sessions, and the
+// optional Aitum output bridge. Provider-specific UI and session paths live
+// in dedicated implementation units so each responsibility stays small and
+// reviewable.
 class BridgeDock final : public QWidget {
 public:
 	explicit BridgeDock(QWidget *obs_main_window);
@@ -78,7 +79,6 @@ private:
 	void verify_token_for_profile(const QString &profile_id, const QString &token);
 	void begin_tiktok_studio_login(const QString &profile_id, const QString &rapidapi_key);
 	void refresh_tiktok_studio_account(const QString &profile_id, bool report_error = false);
-	void disconnect_tiktok_studio_account(const QString &profile_id);
 	void add_tiktok_studio_account_controls(QFormLayout *form, const Profile &profile, QWidget *parent);
 	[[nodiscard]] QString account_status_text(const Profile &profile) const;
 	void save_local_credentials(const QString &profile_id, const QString &username, const QString &server,
@@ -86,6 +86,13 @@ private:
 	void refresh_selected_account();
 	void show_transient_error(const QString &message);
 	void set_diagnostic(Profile &profile, const QString &message, bool is_error = false);
+	// Common failed-LIVE transition for every remote provider. Adapters decide
+	// whether their response means missing LIVE access; the dock owns the UI
+	// state change back to step 2.
+	bool return_to_account_step_on_live_access_denied(Profile &profile,
+		const class ProviderLifecycle &provider, const QString &error);
+	[[nodiscard]] QString provider_error_message(const class ProviderLifecycle &provider,
+		const QString &error) const;
 	void clear_live_session(Profile &profile);
 	// Provider-neutral handoff for a ready RTMP credential pair. Providers own
 	// session creation; this method owns validation and the Aitum UI update.
@@ -110,19 +117,18 @@ private:
 	void start_aitum_output_and_verify(const QString &profile_id, const QString &output_name,
 		std::function<void(const QString &)> on_start_failure);
 	void start_selected_live();
+	void return_selected_manual_profile_to_credentials();
 	void start_profile_live(const QString &profile_id, bool start_aitum_output);
 	void start_tiktok_studio_live(const QString &profile_id, bool start_aitum_output);
-	void create_tiktok_studio_live_session(const QString &profile_id, bool start_aitum_output,
-		TikTokStudioAccountCredentials account);
+	void create_tiktok_studio_live_session(const QString &profile_id, bool start_aitum_output);
 	void resume_tiktok_studio_live(const QString &profile_id, bool start_aitum_output = false);
 	void activate_tiktok_studio_live(const QString &profile_id, const QString &output_name,
-		bool start_aitum_output, TikTokStudioLive live);
+		bool start_aitum_output, PreparedLive live);
 	void prepare_tiktok_studio_output(const QString &profile_id, const QString &output_name,
-		bool start_aitum_output, TikTokStudioLive live);
-	void prepare_tiktok_studio_native_output(const QString &profile_id, TikTokStudioLive live);
-	void verify_tiktok_studio_native_output(const QString &profile_id, int attempt);
+		bool start_aitum_output, PreparedLive live);
+	void prepare_tiktok_studio_main_output(const QString &profile_id, PreparedLive live);
 	void fail_tiktok_studio_start(const QString &profile_id, const QString &output_name,
-		bool start_aitum_output, TikTokStudioLive live, const QString &reason);
+		bool start_aitum_output, PreparedLive live, const QString &reason);
 	void run_tiktok_studio_heartbeats();
 	void end_selected_live();
 	void end_live_for_output(const QString &output_name);
@@ -139,7 +145,7 @@ private:
 	AitumBridge bridge_;
 	StreamlabsClient streamlabs_;
 	TikTokStudioClient tiktok_studio_;
-	NativeOutputManager native_output_;
+	ProviderSessionRouter provider_sessions_;
 	OutputSigningManager output_signing_;
 	QTimer *tiktok_studio_heartbeat_timer_ = nullptr;
 	QSet<QString> tiktok_studio_heartbeat_in_flight_;

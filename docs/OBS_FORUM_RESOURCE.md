@@ -35,7 +35,7 @@ It can also be used without Aitum. In manual mode, the dock shows the generated 
 ### Installation
 
 1. Close OBS Studio.
-2. Run the installer as administrator.
+2. Close OBS and extract the platform archive into the appropriate OBS plugin location.
 3. Choose the root folder of the OBS installation you want to extend. Portable installations are supported.
 4. Restart OBS Studio.
 5. Open **Docks → TikTok Live OBS**.

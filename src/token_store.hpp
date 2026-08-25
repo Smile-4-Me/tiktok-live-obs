@@ -4,21 +4,13 @@
 #pragma once
 
 #include "tiktok_studio_account.hpp"
+#include "frame_signing_credentials.hpp"
 
 #include <QString>
 
 struct LiveCredentials {
 	QString server;
 	QString key;
-};
-
-struct FrameSigningCredentials {
-	QString api_url = QStringLiteral("https://tiktok-live-studio-api-signer1.p.rapidapi.com/");
-	QString rapidapi_key;
-	QString uid;
-	QString device_id;
-	QString room_id;
-	QString aid = QStringLiteral("8311");
 };
 
 class TokenStore final {

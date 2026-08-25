@@ -15,6 +15,10 @@ struct Profile {
 	QString provider_id = QStringLiteral("tiktok-studio");
 	QString display_name;
 	QString tiktok_username;
+	// Providers can discover an account name only while a LIVE session is
+	// active. It is intentionally runtime-only and is cleared when the session
+	// ends; manually entered profile names remain in tiktok_username.
+	QString live_tiktok_username;
 	QString output_name;
 	QString stream_title;
 	QString hashtag_id;
@@ -46,7 +50,11 @@ struct Profile {
 			return ProfileState::SessionUncertain;
 		if (live)
 			return ProfileState::Live;
-		if (tiktok_username.isEmpty())
+		if (provider_id == QStringLiteral("manual") && !can_go_live)
+			return ProfileState::NeedsLogin;
+		// Manual RTMP credentials have no trustworthy username field. Their stream
+		// URL and key are sufficient to move to the next step once saved.
+		if (tiktok_username.isEmpty() && provider_id != QStringLiteral("manual"))
 			return ProfileState::NeedsLogin;
 		if (!can_go_live)
 			return ProfileState::AwaitingLiveAccess;

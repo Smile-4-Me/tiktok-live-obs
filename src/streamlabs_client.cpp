@@ -169,7 +169,19 @@ void StreamlabsClient::start_live(const QString &token, const QString &title, co
 	}, [completion = std::move(completion)](HttpResult result) mutable {
 		const QJsonObject object = QJsonDocument::fromJson(result.body).object();
 		StreamlabsLive live {object.value("id").toVariant().toString(), object.value("rtmp").toString(), object.value("key").toString()};
-		if (result.status < 200 || result.status >= 300 || live.id.isEmpty() || live.server.isEmpty() || live.key.isEmpty()) { completion({}, QStringLiteral("TikTok LIVE could not be created through Streamlabs.")); return; }
+		if (result.status < 200 || result.status >= 300 || live.id.isEmpty() || live.server.isEmpty() || live.key.isEmpty()) {
+			QString detail = object.value(QStringLiteral("message")).toString();
+			if (detail.isEmpty())
+				detail = object.value(QStringLiteral("error")).toString();
+			if (detail.isEmpty())
+				detail = object.value(QStringLiteral("detail")).toString();
+			const QString reason = result.status > 0 ? QStringLiteral("HTTP %1").arg(result.status)
+				: result.error;
+			completion({}, detail.isEmpty()
+				? QStringLiteral("TikTok LIVE could not be created through Streamlabs (%1).").arg(reason)
+				: QStringLiteral("TikTok LIVE could not be created through Streamlabs (%1: %2).").arg(reason, detail));
+			return;
+		}
 		completion(live, {});
 	});
 }

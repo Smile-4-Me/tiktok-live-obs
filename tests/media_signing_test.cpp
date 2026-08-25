@@ -85,13 +85,13 @@ int main()
 		200, input);
 	passed &= expect(array_parsed.valid() && array_parsed.first_timestamp() == 1700000002,
 		"top-level RapidAPI batch array was rejected");
-	FrameSignApiConfig api;
-	api.rapidapi_key = QStringLiteral("fixture-key");
+	HostedSigningServiceConfig api;
+	api.api_key = QStringLiteral("fixture-key");
 	passed &= expect(api.valid(), "default RapidAPI endpoint was rejected");
 	api.base_url = QUrl(QStringLiteral("https://rapidapi.com.evil.example/"));
 	passed &= expect(!api.valid(), "a lookalike RapidAPI hostname was accepted");
 	api.base_url = QUrl(QStringLiteral("https://tiktok-live-studio-api-signer1.p.rapidapi.com/"));
-	api.rapidapi_key = QStringLiteral("fixture-key\r\nInjected: value");
+	api.api_key = QStringLiteral("fixture-key\r\nInjected: value");
 	passed &= expect(!api.valid(), "a RapidAPI key containing a header break was accepted");
 
 	const FrameSignBatch rejected = FrameSignClient::parse_batch_response(

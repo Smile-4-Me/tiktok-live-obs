@@ -54,11 +54,11 @@ int cancel_transfer(void *user_data, curl_off_t, curl_off_t, curl_off_t, curl_of
 	return cancelled && cancelled->load(std::memory_order_relaxed) ? 1 : 0;
 }
 
-HttpResult post_json(const FrameSignApiConfig &api, const QUrl &url, const QByteArray &body,
+HttpResult post_json(const HostedSigningServiceConfig &service, const QUrl &url, const QByteArray &body,
 	const std::atomic_bool *cancelled)
 {
 	HttpResult result;
-	if (!api.valid() || url.scheme() != QStringLiteral("https") || !is_rapidapi_host(url.host())) {
+	if (!service.valid() || url.scheme() != QStringLiteral("https") || !is_rapidapi_host(url.host())) {
 		result.error = QStringLiteral("The frame-signing service must use a valid RapidAPI HTTPS address and API key.");
 		return result;
 	}
@@ -82,7 +82,7 @@ HttpResult post_json(const FrameSignApiConfig &api, const QUrl &url, const QByte
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 	const QByteArray host = url.host().toUtf8();
 	if (is_rapidapi_host(url.host())) {
-		headers = curl_slist_append(headers, (QByteArrayLiteral("X-RapidAPI-Key: ") + api.rapidapi_key.toUtf8()).constData());
+		headers = curl_slist_append(headers, (QByteArrayLiteral("X-RapidAPI-Key: ") + service.api_key.toUtf8()).constData());
 		headers = curl_slist_append(headers, (QByteArrayLiteral("X-RapidAPI-Host: ") + host).constData());
 	}
 	const QByteArray encoded_url = url.toEncoded();
@@ -179,25 +179,16 @@ QByteArray FrameSignResult::compact_json() const
 	return compact_result_json(*this);
 }
 
-bool FrameSignApiConfig::valid() const
-{
-	return base_url.scheme() == QStringLiteral("https") && is_rapidapi_host(base_url.host()) &&
-		base_url.userInfo().isEmpty() && base_url.query().isEmpty() && base_url.fragment().isEmpty() &&
-		(base_url.port(-1) == -1 || base_url.port(-1) == 443) && !rapidapi_key.trimmed().isEmpty() &&
-		rapidapi_key.size() <= 4096 && !rapidapi_key.contains(QLatin1Char('\r')) &&
-		!rapidapi_key.contains(QLatin1Char('\n'));
-}
-
-FrameSignBatch FrameSignClient::fetch_batch(const FrameSignApiConfig &api, const FrameSignInput &input,
+FrameSignBatch FrameSignClient::fetch_batch(const HostedSigningServiceConfig &service, const FrameSignInput &input,
 	qint64 start_timestamp_seconds, int duration_seconds, int step_seconds,
 	const std::atomic_bool *cancelled)
 {
 	FrameSignBatch batch;
-	if (!api.valid()) {
+	if (!service.valid()) {
 		batch.error = QStringLiteral("A RapidAPI frame-signing key is required.");
 		return batch;
 	}
-	QUrl endpoint = api.base_url;
+	QUrl endpoint = service.base_url;
 	QString path = endpoint.path();
 	if (!path.endsWith(QLatin1Char('/')))
 		path += QLatin1Char('/');
@@ -218,15 +209,15 @@ FrameSignBatch FrameSignClient::fetch_batch(const FrameSignApiConfig &api, const
 		{QStringLiteral("duration_seconds"), std::clamp(duration_seconds, 1, 900)},
 		{QStringLiteral("step_seconds"), std::clamp(step_seconds, 1, 30)},
 	};
-	const HttpResult response = post_json(api, endpoint,
+	const HttpResult response = post_json(service, endpoint,
 		QJsonDocument(request).toJson(QJsonDocument::Compact), cancelled);
 	if (!response.error.isEmpty()) {
 		batch.error = QStringLiteral("The frame-signing service could not be reached: %1").arg(response.error);
 		return batch;
 	}
 	batch = parse_batch_response(response.body, response.status, input);
-	if (!batch.error.isEmpty() && !api.rapidapi_key.isEmpty())
-		batch.error.replace(api.rapidapi_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
+	if (!batch.error.isEmpty() && !service.api_key.isEmpty())
+		batch.error.replace(service.api_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
 	return batch;
 }
 

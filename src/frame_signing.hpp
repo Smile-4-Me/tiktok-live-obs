@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include "hosted_signing_service.hpp"
+
 #include <QMap>
 #include <QString>
-#include <QUrl>
 
 #include <atomic>
 
@@ -29,13 +30,6 @@ struct FrameSignResult {
 	[[nodiscard]] QByteArray compact_json() const;
 };
 
-struct FrameSignApiConfig {
-	QUrl base_url = QUrl(QStringLiteral("https://tiktok-live-studio-api-signer1.p.rapidapi.com/"));
-	QString rapidapi_key;
-
-	[[nodiscard]] bool valid() const;
-};
-
 struct FrameSignBatch {
 	QMap<qint64, FrameSignResult> signatures;
 	QString error;
@@ -49,7 +43,7 @@ struct FrameSignBatch {
 // frame-signing algorithm or fallback; blank/rejected signatures fail closed.
 class FrameSignClient final {
 public:
-	static FrameSignBatch fetch_batch(const FrameSignApiConfig &api, const FrameSignInput &input,
+	static FrameSignBatch fetch_batch(const HostedSigningServiceConfig &service, const FrameSignInput &input,
 		qint64 start_timestamp_seconds, int duration_seconds = 300, int step_seconds = 1,
 		const std::atomic_bool *cancelled = nullptr);
 	static FrameSignBatch parse_batch_response(const QByteArray &body, long http_status,

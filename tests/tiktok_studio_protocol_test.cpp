@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 				QJsonObject{{QStringLiteral("is_ban"), QStringLiteral("")}}},
 			{QStringLiteral("block_status"), QStringLiteral("0")}},
 		{{QStringLiteral("has_live_studio_login"), 1}});
-	ok &= expect(ready.can_go_live && ready.status == QStringLiteral("Ready"),
+	ok &= expect(ready.can_go_live && ready.status == QStringLiteral("live_access_unknown"),
 		"Numeric TikTok eligibility flags should match Python truthiness.");
 
 	const TikTokStudioEligibility restricted = parse_tiktok_studio_eligibility(
@@ -174,6 +174,10 @@ int main(int argc, char **argv)
 	ok &= expect(tiktok_studio_session_requires_login(QStringLiteral("Please login first")) &&
 		!tiktok_studio_session_requires_login(QStringLiteral("Room has finished")),
 		"TikTok authentication responses were not classified safely.");
+	ok &= expect(tiktok_studio_session_has_no_live_auth(
+		QStringLiteral("TikTok LIVE access check failed (TikTok status 20800).")) &&
+		!tiktok_studio_session_has_no_live_auth(QStringLiteral("Room has finished")),
+		"TikTok LIVE entitlement responses were not classified safely.");
 
 	const QJsonObject nested_account{{QStringLiteral("user"),
 		QJsonObject{{QStringLiteral("user_id_str"), QStringLiteral("7000000000000000001")}}}};

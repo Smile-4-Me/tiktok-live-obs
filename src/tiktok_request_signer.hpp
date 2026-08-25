@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "frame_signing.hpp"
+#include "hosted_signing_service.hpp"
 
 #include <QByteArray>
 #include <QString>
@@ -30,7 +30,7 @@ struct TikTokRequestSignatureHeaders {
 
 class RapidApiRequestSigner final {
 public:
-	static TikTokRequestSignatureHeaders fetch(const FrameSignApiConfig &api,
+	static TikTokRequestSignatureHeaders fetch(const HostedSigningServiceConfig &service,
 		const TikTokRequestSignatureInput &input);
 	static TikTokRequestSignatureHeaders parse_response(const QByteArray &body, long http_status);
 };
