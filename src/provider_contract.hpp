@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "tiktok_studio_account.hpp"
+
 #include <QString>
 
 // The dock works with these provider-neutral values after an account has been
@@ -56,6 +58,9 @@ struct ProviderAccountStatus {
 	QString status;
 	bool can_go_live = false;
 	bool live_access_is_confirmed = false;
+	bool dual_layout_available = false;
+	QString dual_layout_status;
+	RapidApiQuota rapidapi_quota;
 };
 
 // Provider-neutral option used by providers that offer a selectable LIVE
@@ -79,6 +84,7 @@ struct LiveRequest {
 	QString topic_id;
 	QString category_id;
 	bool mature = false;
+	bool dual_layout = false;
 };
 
 // A provider hands the same credential pair to every output path. Aitum and
@@ -89,6 +95,8 @@ struct PreparedLive {
 	QString room_id;
 	QString server;
 	QString key;
+	QString dual_server;
+	QString dual_key;
 	// Optional account identity returned by a provider for this session. It is
 	// not persisted and is useful when a manual profile did not supply a name.
 	QString tiktok_username;
@@ -96,6 +104,10 @@ struct PreparedLive {
 	[[nodiscard]] bool has_credentials() const
 	{
 		return !server.trimmed().isEmpty() && !key.trimmed().isEmpty();
+	}
+	[[nodiscard]] bool has_dual_credentials() const
+	{
+		return !dual_server.trimmed().isEmpty() && !dual_key.trimmed().isEmpty();
 	}
 };
 

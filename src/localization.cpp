@@ -52,6 +52,11 @@ void merge_catalog(const QDir &catalog_directory, const QString &locale)
 		return;
 
 	QSettings english_settings(english_path, QSettings::IniFormat);
+	// English is the complete schema for every catalog. It is loaded first and
+	// the selected language only overlays translated values, so a newly added
+	// key can never render as a raw internal identifier in a partial language
+	// pack. The locale-catalog-contract test verifies that every literal UI key
+	// used by the plugin is present in this English schema.
 	for (const QString &key : english_settings.allKeys())
 		translations.insert(key, english_settings.value(key).toString());
 

@@ -65,7 +65,8 @@ QString display_value(const QJsonValue &value)
 } // namespace
 
 TikTokStudioEligibility parse_tiktok_studio_eligibility(
-	const QJsonObject &create_data, const QJsonObject &game_data)
+	const QJsonObject &create_data, const QJsonObject &game_data,
+	const QJsonObject &dual_data, const QJsonObject &threshold_data)
 {
 	const bool locale_restricted = python_truthy(
 		create_data.value(QStringLiteral("golive_locale_restricted")));
@@ -91,5 +92,32 @@ TikTokStudioEligibility parse_tiktok_studio_eligibility(
 	if (locale_restricted)
 		status.push_back(QStringLiteral("Locale restricted"));
 	result.status = status.join(QStringLiteral(" / "));
+	const bool supports_multi_stream = python_truthy(
+		dual_data.value(QStringLiteral("allow_multi_stream")));
+	const bool threshold_allowed = python_truthy(threshold_data.value(QStringLiteral("allowed")));
+	const bool previously_used = python_truthy(threshold_data.value(QStringLiteral("dual_canvas_used")));
+	const QString days_to_reach = display_value(
+		threshold_data.value(QStringLiteral("days_to_reach"))).trimmed();
+	bool has_remaining_days = false;
+	const qint64 remaining_days = days_to_reach.toLongLong(&has_remaining_days);
+	has_remaining_days = has_remaining_days && remaining_days > 0;
+	// TikTok LIVE Studio unlocks the scene=1 feature only after its threshold
+	// permits it, or after the account has already used a dual canvas.
+	result.dual_layout_available = supports_multi_stream && (threshold_allowed || previously_used);
+	if (result.dual_layout_available) {
+		result.dual_layout_status = QStringLiteral("available");
+	} else if (has_remaining_days) {
+		// `days_to_reach` is TikTok's direct progress value for the LIVE Studio
+		// prerequisite. Preserve it even while the scene=1 account gate remains
+		// false: the UI can then explain the concrete next step instead of hiding
+		// the progress behind a generic account-level status.
+		result.dual_layout_status = QStringLiteral("locked:%1").arg(remaining_days);
+	} else if (!supports_multi_stream) {
+		result.dual_layout_status = QStringLiteral("not_available");
+	} else if (!threshold_data.isEmpty()) {
+		result.dual_layout_status = QStringLiteral("locked");
+	} else {
+		result.dual_layout_status = QStringLiteral("unknown");
+	}
 	return result;
 }

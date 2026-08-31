@@ -13,14 +13,29 @@ int main()
 		.status = QStringLiteral("approved"),
 		.can_go_live = true,
 		.live_access_is_confirmed = true,
+		.dual_layout_available = true,
+		.dual_layout_status = QStringLiteral("available"),
+		.rapidapi_quota = {.limit = 100, .remaining = 82, .reset_epoch_seconds = 1700000000,
+			.observed_epoch_seconds = 1699999000},
 	};
 	ProfileAccountStatus::apply(profile, status);
 
 	if (profile.tiktok_username != status.username ||
 		profile.application_status != status.status ||
-		profile.can_go_live != status.can_go_live) {
+		profile.can_go_live != status.can_go_live ||
+		!profile.dual_layout_available || profile.dual_layout_status != QStringLiteral("available") ||
+		profile.rapidapi_quota.limit != 100 || profile.rapidapi_quota.remaining != 82) {
 		std::cerr << "Provider account status was not applied consistently.\n";
 		return 1;
+	}
+
+	const RapidApiQuota relative_reset{.limit = 7000, .remaining = 6832,
+		.reset_epoch_seconds = 1};
+	const RapidApiQuota calendar_reset{.limit = 7000, .remaining = 6832,
+		.reset_epoch_seconds = 1767225600};
+	if (relative_reset.has_calendar_reset() || !calendar_reset.has_calendar_reset()) {
+		std::cerr << "RapidAPI reset values were not distinguished from Unix timestamps.\n";
+		return 2;
 	}
 
 	profile.application_status = QStringLiteral("live_access_denied");
@@ -46,7 +61,7 @@ int main()
 	});
 	if (!profile.output_name.isEmpty()) {
 		std::cerr << "A confirmed LIVE-access denial retained a stale output assignment.\n";
-		return 2;
+		return 3;
 	}
 
 	std::cout << "Profile account status mapping passed.\n";

@@ -13,6 +13,7 @@
 
 #include <QTimer>
 
+#include <memory>
 #include <utility>
 
 namespace {
@@ -70,6 +71,10 @@ void BridgeDock::start_tiktok_studio_live(const QString &profile_id, bool start_
 					outputs_preparing_.remove(output_name);
 					return;
 				}
+				// The continuity check already made signed RapidAPI requests. Mirror
+				// their response-header quota before either resuming or creating a
+				// room, without issuing a separate usage request.
+				sync_rapidapi_quota_from_account(profile_id);
 
 				if (!live.room_id.isEmpty() && !live.stream_id.isEmpty()) {
 					current->preparing = false;
@@ -141,7 +146,8 @@ void BridgeDock::create_tiktok_studio_live_session(const QString &profile_id,
 
 	const ProviderAccountReference provider_account{profile->id, profile->account_id};
 	const LiveRequest request{.title = profile->stream_title, .topic_id = hashtag_id,
-		.category_id = game_tag_id, .mature = profile->mature};
+		.category_id = game_tag_id, .mature = profile->mature,
+		.dual_layout = profile->dual_layout_enabled};
 	provider->create_live(provider_account, request,
 		[this, profile_id, output_name, start_aitum_output](PreparedLive live, QString error) mutable {
 			Profile *current = find_profile(profile_id);
@@ -149,6 +155,9 @@ void BridgeDock::create_tiktok_studio_live_session(const QString &profile_id,
 				outputs_preparing_.remove(output_name);
 				return;
 			}
+			// Creating a room updates the account credentials with the latest
+			// RapidAPI response headers. Reflect that value before the UI advances.
+			sync_rapidapi_quota_from_account(profile_id);
 			if (!error.isEmpty()) {
 				QString visible_error = error;
 				if (ProviderLifecycle *error_provider = provider_sessions_.find(current->provider_id)) {
@@ -279,6 +288,19 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 				"TikTok did not return a stream URL and key for this LIVE. Try creating the LIVE again.")));
 		return;
 	}
+	if (current->dual_layout_enabled) {
+		const QString secondary_output = current->dual_output_name;
+		if (secondary_output.isEmpty() || secondary_output == output_name ||
+			live.dual_server.trimmed().isEmpty() || live.dual_key.trimmed().isEmpty()) {
+			fail_tiktok_studio_start(profile_id, output_name, start_aitum_output,
+				std::move(live), translated_or("Studio.Stream.DualEndpointMissing",
+					QStringLiteral("TikTok did not return a second stream endpoint for Dual Layout.")));
+			return;
+		}
+		prepare_tiktok_studio_dual_outputs(profile_id, output_name, secondary_output,
+			start_aitum_output, std::move(live));
+		return;
+	}
 
 	// Keep the RTMP pair separate from the move-only callback capture. C++ does
 	// not guarantee argument evaluation order, so passing live.server/live.key
@@ -296,6 +318,101 @@ void BridgeDock::activate_tiktok_studio_live(const QString &profile_id, const QS
 			}
 			prepare_tiktok_studio_output(profile_id, output_name,
 				start_aitum_output, std::move(live));
+		});
+}
+
+void BridgeDock::prepare_tiktok_studio_dual_outputs(const QString &profile_id,
+	const QString &primary_output, const QString &secondary_output, bool start_aitum_output,
+	PreparedLive live)
+{
+	Profile *profile = find_profile(profile_id);
+	if (!profile) {
+		outputs_preparing_.remove(primary_output);
+		outputs_preparing_.remove(secondary_output);
+		return;
+	}
+	// Every asynchronous stage references this immutable session snapshot. It
+	// prevents an error callback from receiving an emptied PreparedLive after a
+	// sibling callback has consumed it.
+	auto pending_live = std::make_shared<PreparedLive>(std::move(live));
+	const QString primary_server = pending_live->server;
+	const QString primary_key = pending_live->key;
+	const QString secondary_server = pending_live->dual_server;
+	const QString secondary_key = pending_live->dual_key;
+	update_aitum_output_for_profile(profile_id, primary_output, primary_server, primary_key,
+		[this, profile_id, primary_output, secondary_output, start_aitum_output,
+			secondary_server, secondary_key, pending_live](BridgeResult first) mutable {
+			if (first != BridgeResult::Success) {
+				fail_tiktok_studio_start(profile_id, primary_output, start_aitum_output,
+					*pending_live, aitum_bridge_result_message(first, primary_output));
+				return;
+			}
+			update_aitum_output_for_profile(profile_id, secondary_output, secondary_server, secondary_key,
+				[this, profile_id, primary_output, secondary_output, start_aitum_output,
+					pending_live](BridgeResult second) mutable {
+					if (second != BridgeResult::Success) {
+						fail_tiktok_studio_start(profile_id, primary_output, start_aitum_output,
+							*pending_live, aitum_bridge_result_message(second, secondary_output));
+						return;
+					}
+					prepare_output_signing(profile_id, primary_output, pending_live->room_id,
+						[this, profile_id, primary_output, secondary_output, start_aitum_output,
+							pending_live](bool primary_attached, QString primary_error) mutable {
+							if (!primary_attached) {
+								fail_tiktok_studio_start(profile_id, primary_output, start_aitum_output,
+									*pending_live, primary_error);
+								return;
+							}
+							prepare_output_signing(profile_id, secondary_output, pending_live->room_id,
+								[this, profile_id, primary_output, secondary_output, start_aitum_output,
+									pending_live](bool secondary_attached, QString secondary_error) mutable {
+									if (!secondary_attached) {
+										fail_tiktok_studio_start(profile_id, primary_output, start_aitum_output,
+											*pending_live, secondary_error);
+										return;
+									}
+									Profile *current = find_profile(profile_id);
+									if (!current)
+										return;
+									current->preparing = start_aitum_output;
+									current->diagnostic = start_aitum_output
+										? text("Diagnostic.StartingOutput") : text("Diagnostic.SessionReady");
+									current->diagnostic_error = false;
+									save_profiles();
+									refresh_profile_ui(profile_id);
+									if (!start_aitum_output) {
+										current->live = true;
+										current->preparing = false;
+										save_profiles();
+										refresh_profile_ui(profile_id);
+										refresh_tiktok_studio_account(profile_id, false);
+										return;
+									}
+									start_aitum_output_and_verify_then(profile_id, primary_output,
+										[this, profile_id, primary_output, secondary_output, pending_live]() mutable {
+											start_aitum_output_and_verify_then(profile_id, secondary_output,
+												[this, profile_id] {
+													if (Profile *ready = find_profile(profile_id)) {
+														ready->live = true;
+														ready->preparing = false;
+														ready->session_uncertain = false;
+														ready->diagnostic = text("Diagnostic.OutputStarted");
+														ready->diagnostic_error = false;
+														save_profiles();
+														refresh_profile_ui(profile_id);
+														refresh_tiktok_studio_account(profile_id, false);
+													}
+												}, [this, profile_id, primary_output, pending_live](const QString &error) mutable {
+													fail_tiktok_studio_start(profile_id, primary_output, true,
+														*pending_live, text("OneClick.StartFailed").arg(error));
+												});
+										}, [this, profile_id, primary_output, pending_live](const QString &error) mutable {
+											fail_tiktok_studio_start(profile_id, primary_output, true,
+												*pending_live, text("OneClick.StartFailed").arg(error));
+										});
+								});
+						});
+				});
 		});
 }
 
@@ -328,6 +445,7 @@ void BridgeDock::prepare_tiktok_studio_main_output(const QString &profile_id, Pr
 			current->diagnostic_error = false;
 			save_profiles();
 			refresh_profile_ui(profile_id);
+			refresh_tiktok_studio_account(profile_id, false);
 		});
 }
 
@@ -356,6 +474,7 @@ void BridgeDock::prepare_tiktok_studio_main_output(const QString &profile_id, Pr
 			outputs_preparing_.remove(output_name);
 			save_profiles();
 			refresh_profile_ui(profile_id);
+			refresh_tiktok_studio_account(profile_id, false);
 			return;
 		}
 		start_aitum_output_and_verify(profile_id, output_name,
@@ -375,6 +494,10 @@ void BridgeDock::prepare_tiktok_studio_main_output(const QString &profile_id, Pr
 	{
 		output_signing_.detach(output_name);
 		Profile *profile = find_profile(profile_id);
+		const QString secondary_output = profile && profile->dual_layout_enabled
+			? profile->dual_output_name : QString{};
+		if (!secondary_output.isEmpty() && secondary_output != output_name)
+			output_signing_.detach(secondary_output);
 		if (profile) {
 			profile->preparing = false;
 			profile->ending = true;
@@ -386,6 +509,19 @@ void BridgeDock::prepare_tiktok_studio_main_output(const QString &profile_id, Pr
 		show_transient_error(reason);
 		if (!profile)
 			return;
+		// Roll back every output that this Dual Layout attempt may already have
+		// started before asking TikTok to close the room. A failed second output
+		// must never leave the first canvas broadcasting on its own.
+		if (start_aitum_output && aitum_stream_suite_available()) {
+			const QStringList outputs = secondary_output.isEmpty()
+				? QStringList{output_name} : QStringList{output_name, secondary_output};
+			for (const QString &candidate : outputs) {
+				bool active = false;
+				QString ignored;
+				if (aitum_output_is_active(candidate, &active, &ignored) && active)
+					aitum_stop_output(candidate, &ignored);
+			}
+		}
 		ProviderLifecycle *provider = provider_sessions_.find(profile->provider_id);
 		if (!provider) {
 			profile->ending = false;
@@ -396,12 +532,14 @@ void BridgeDock::prepare_tiktok_studio_main_output(const QString &profile_id, Pr
 		}
 		const ProviderAccountReference account{profile->id, profile->account_id};
 		provider->end_live(account, live,
-			[this, profile_id, output_name, start_aitum_output, reason](ProviderEndResult result) {
+		[this, profile_id, output_name, start_aitum_output, reason](ProviderEndResult result) {
 				if (start_aitum_output)
 					outputs_preparing_.remove(output_name);
 				Profile *current = find_profile(profile_id);
 				if (!current)
 					return;
+				if (current->dual_layout_enabled)
+					outputs_preparing_.remove(current->dual_output_name);
 				current->ending = false;
 				if (result.ended || result.stale_session) {
 					clear_live_session(*current);

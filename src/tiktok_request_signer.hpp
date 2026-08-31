@@ -4,6 +4,7 @@
 #pragma once
 
 #include "hosted_signing_service.hpp"
+#include "tiktok_studio_account.hpp"
 
 #include <QByteArray>
 #include <QString>
@@ -20,6 +21,7 @@ struct TikTokRequestSignatureHeaders {
 	QByteArray x_khronos;
 	QByteArray x_ladon;
 	QByteArray x_argus;
+	RapidApiQuota quota;
 	QString error;
 
 	[[nodiscard]] bool valid() const

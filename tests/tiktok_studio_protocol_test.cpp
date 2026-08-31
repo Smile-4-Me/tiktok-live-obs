@@ -127,6 +127,31 @@ int main(int argc, char **argv)
 		restricted.status == QStringLiteral("Restricted / Banned / Blocked 2 / Locale restricted"),
 		"Detailed TikTok restriction status no longer matches the public reference app.");
 
+	const TikTokStudioEligibility dual_unlocked = parse_tiktok_studio_eligibility(
+		{{QStringLiteral("golive_locale_restricted"), 0}},
+		{{QStringLiteral("has_live_studio_login"), true}},
+		{{QStringLiteral("allow_multi_stream"), 1}},
+		{{QStringLiteral("allowed"), true}});
+	ok &= expect(dual_unlocked.dual_layout_available &&
+		dual_unlocked.dual_layout_status == QStringLiteral("available"),
+		"TikTok's allowed multi-stream scene must unlock the paired-output path.");
+	const TikTokStudioEligibility dual_locked = parse_tiktok_studio_eligibility(
+		{{QStringLiteral("golive_locale_restricted"), 0}},
+		{{QStringLiteral("has_live_studio_login"), true}},
+		{{QStringLiteral("allow_multi_stream"), true}},
+		{{QStringLiteral("allowed"), false}, {QStringLiteral("days_to_reach"), 3}});
+	ok &= expect(!dual_locked.dual_layout_available &&
+		dual_locked.dual_layout_status == QStringLiteral("locked:3"),
+		"A locked TikTok multi-stream threshold must stay disabled and explain its remaining time.");
+	const TikTokStudioEligibility dual_progress_before_scene_gate = parse_tiktok_studio_eligibility(
+		{{QStringLiteral("golive_locale_restricted"), 0}},
+		{{QStringLiteral("has_live_studio_login"), true}},
+		{{QStringLiteral("allow_multi_stream"), false}},
+		{{QStringLiteral("allowed"), false}, {QStringLiteral("days_to_reach"), 3}});
+	ok &= expect(!dual_progress_before_scene_gate.dual_layout_available &&
+		dual_progress_before_scene_gate.dual_layout_status == QStringLiteral("locked:3"),
+		"TikTok's remaining LIVE Studio days must remain visible before the scene gate unlocks.");
+
 	const QVector<TikTokStudioGameTag> games = parse_tiktok_studio_game_tags({
 		{QStringLiteral("data"), QJsonObject{{QStringLiteral("game_tag_list"), QJsonArray{
 			QJsonObject{{QStringLiteral("id"), QStringLiteral("101")},

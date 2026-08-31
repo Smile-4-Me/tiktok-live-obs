@@ -34,6 +34,8 @@ Profile read_profile(QSettings &settings, bool &migrated_account_ids, bool &migr
 	profile.display_name = settings.value(QStringLiteral("display_name")).toString();
 	profile.tiktok_username = settings.value(QStringLiteral("tiktok_username")).toString();
 	profile.output_name = settings.value(QStringLiteral("output_name")).toString();
+	profile.dual_layout_enabled = settings.value(QStringLiteral("dual_layout_enabled"), false).toBool();
+	profile.dual_output_name = settings.value(QStringLiteral("dual_output_name")).toString();
 	// Version 1.1 removed the private OBS RTMP-output mode. The retained
 	// output_name still describes either the Aitum target or the explicit
 	// credential-only target, so the old flag can be discarded safely.
@@ -66,6 +68,12 @@ Profile read_profile(QSettings &settings, bool &migrated_account_ids, bool &migr
 	profile.stream_server = credentials.server;
 	profile.stream_key = credentials.key;
 	profile.application_status = settings.value(QStringLiteral("application_status")).toString();
+	profile.dual_layout_available = settings.value(QStringLiteral("dual_layout_available"), false).toBool();
+	profile.dual_layout_status = settings.value(QStringLiteral("dual_layout_status")).toString();
+	profile.rapidapi_quota.limit = settings.value(QStringLiteral("rapidapi_quota_limit"), -1).toLongLong();
+	profile.rapidapi_quota.remaining = settings.value(QStringLiteral("rapidapi_quota_remaining"), -1).toLongLong();
+	profile.rapidapi_quota.reset_epoch_seconds = settings.value(QStringLiteral("rapidapi_quota_reset"), 0).toLongLong();
+	profile.rapidapi_quota.observed_epoch_seconds = settings.value(QStringLiteral("rapidapi_quota_observed"), 0).toLongLong();
 	return profile;
 }
 
@@ -77,6 +85,8 @@ void write_profile(QSettings &settings, const Profile &profile)
 	settings.setValue(QStringLiteral("display_name"), profile.display_name);
 	settings.setValue(QStringLiteral("tiktok_username"), profile.tiktok_username);
 	settings.setValue(QStringLiteral("output_name"), profile.output_name);
+	settings.setValue(QStringLiteral("dual_layout_enabled"), profile.dual_layout_enabled);
+	settings.setValue(QStringLiteral("dual_output_name"), profile.dual_output_name);
 	settings.setValue(QStringLiteral("stream_title"), profile.stream_title);
 	settings.setValue(QStringLiteral("hashtag_id"), profile.hashtag_id);
 	settings.setValue(QStringLiteral("category"), profile.category);
@@ -88,6 +98,12 @@ void write_profile(QSettings &settings, const Profile &profile)
 	settings.setValue(QStringLiteral("live_id"), profile.live_id);
 	settings.setValue(QStringLiteral("stream_id"), profile.stream_id);
 	settings.setValue(QStringLiteral("application_status"), profile.application_status);
+	settings.setValue(QStringLiteral("dual_layout_available"), profile.dual_layout_available);
+	settings.setValue(QStringLiteral("dual_layout_status"), profile.dual_layout_status);
+	settings.setValue(QStringLiteral("rapidapi_quota_limit"), profile.rapidapi_quota.limit);
+	settings.setValue(QStringLiteral("rapidapi_quota_remaining"), profile.rapidapi_quota.remaining);
+	settings.setValue(QStringLiteral("rapidapi_quota_reset"), profile.rapidapi_quota.reset_epoch_seconds);
+	settings.setValue(QStringLiteral("rapidapi_quota_observed"), profile.rapidapi_quota.observed_epoch_seconds);
 }
 
 } // namespace

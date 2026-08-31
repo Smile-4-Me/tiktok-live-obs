@@ -21,6 +21,9 @@ void apply(Profile &profile, const ProviderAccountStatus &status)
 	}
 	profile.application_status = status.status;
 	profile.can_go_live = status.can_go_live;
+	profile.dual_layout_available = status.dual_layout_available;
+	profile.dual_layout_status = status.dual_layout_status;
+	profile.rapidapi_quota = status.rapidapi_quota;
 	if (status.live_access_is_confirmed && !profile.can_go_live)
 		ProfileLiveSession::clear_output_assignment(profile);
 }

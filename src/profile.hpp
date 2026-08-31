@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "tiktok_studio_account.hpp"
+
 #include <QString>
 
 // Profile is the persisted, non-secret state for one TikTok account connection.
@@ -20,6 +22,10 @@ struct Profile {
 	// ends; manually entered profile names remain in tiktok_username.
 	QString live_tiktok_username;
 	QString output_name;
+	// Dual Layout remains a provider capability, but its selected Aitum target
+	// belongs to the profile just like the primary output.
+	bool dual_layout_enabled = false;
+	QString dual_output_name;
 	QString stream_title;
 	QString hashtag_id;
 	QString category;
@@ -40,7 +46,15 @@ struct Profile {
 	QString stream_id;
 	QString stream_server;
 	QString stream_key;
+	// Secondary endpoint credentials exist only while one Dual Layout LIVE is
+	// prepared. They are intentionally not persisted beside the primary secure
+	// credentials; TikTok returns fresh ones on recovery.
+	QString dual_stream_server;
+	QString dual_stream_key;
 	QString application_status;
+	bool dual_layout_available = false;
+	QString dual_layout_status;
+	RapidApiQuota rapidapi_quota;
 	QString diagnostic;
 	bool diagnostic_error = false;
 

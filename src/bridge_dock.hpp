@@ -25,7 +25,9 @@ class QEvent;
 class QFormLayout;
 class QLayout;
 class QLabel;
+class QLineEdit;
 class QPushButton;
+class QResizeEvent;
 class QScrollArea;
 class QTimer;
 class QWidget;
@@ -41,6 +43,7 @@ public:
 
 protected:
 	bool eventFilter(QObject *watched, QEvent *event) override;
+	void resizeEvent(QResizeEvent *event) override;
 
 private:
 	enum class AitumToolbarAction { StartAll, StopAll };
@@ -66,6 +69,8 @@ private:
 	void build_ui();
 	void clear_layout(QLayout *layout);
 	void rebuild_profile_list();
+	void update_detail_viewport_minimum();
+	void rebalance_dock_height();
 	Profile *selected_profile();
 	void show_selected_profile();
 	Profile *find_profile(const QString &id);
@@ -78,9 +83,16 @@ private:
 
 	void verify_token_for_profile(const QString &profile_id, const QString &token);
 	void begin_tiktok_studio_login(const QString &profile_id, const QString &rapidapi_key);
+	void begin_tiktok_browser_session_import(const QString &profile_id, const QString &rapidapi_key);
+	void complete_tiktok_studio_login(const QString &profile_id,
+		const class TikTokStudioAccountCredentials &account, bool can_go_live,
+		const QString &application_status);
 	void refresh_tiktok_studio_account(const QString &profile_id, bool report_error = false);
 	void add_tiktok_studio_account_controls(QFormLayout *form, const Profile &profile, QWidget *parent);
 	[[nodiscard]] QString account_status_text(const Profile &profile) const;
+	[[nodiscard]] QString rapidapi_quota_text(const RapidApiQuota &quota) const;
+	QLabel *create_rapidapi_quota_field(const RapidApiQuota &quota, QWidget *parent) const;
+	void update_rapidapi_quota_field(QLabel *field, const RapidApiQuota &quota) const;
 	void save_local_credentials(const QString &profile_id, const QString &username, const QString &server,
 		const QString &key);
 	void refresh_selected_account();
@@ -102,6 +114,11 @@ private:
 		const QString &output_name) const;
 	void prepare_output_signing(const QString &profile_id, const QString &output_name,
 		const QString &session_room_id, OutputSigningManager::Completion completion);
+	// RapidAPI exposes usage through response headers. Keep that account-scoped
+	// telemetry alongside the saved Studio login so paired outputs and profiles
+	// never need an additional request just to render a quota value.
+	void record_rapidapi_quota(const QString &profile_id, const RapidApiQuota &quota);
+	void sync_rapidapi_quota_from_account(const QString &profile_id);
 	void refresh_profile_ui(const QString &profile_id);
 	void reconcile_previous_sessions();
 	void load_profiles();
@@ -116,6 +133,8 @@ private:
 	// then verify that Aitum reports the encoder as active.
 	void start_aitum_output_and_verify(const QString &profile_id, const QString &output_name,
 		std::function<void(const QString &)> on_start_failure);
+	void start_aitum_output_and_verify_then(const QString &profile_id, const QString &output_name,
+		std::function<void()> on_started, std::function<void(const QString &)> on_start_failure);
 	void start_selected_live();
 	void return_selected_manual_profile_to_credentials();
 	void start_profile_live(const QString &profile_id, bool start_aitum_output);
@@ -126,6 +145,8 @@ private:
 		bool start_aitum_output, PreparedLive live);
 	void prepare_tiktok_studio_output(const QString &profile_id, const QString &output_name,
 		bool start_aitum_output, PreparedLive live);
+	void prepare_tiktok_studio_dual_outputs(const QString &profile_id, const QString &primary_output,
+		const QString &secondary_output, bool start_aitum_output, PreparedLive live);
 	void prepare_tiktok_studio_main_output(const QString &profile_id, PreparedLive live);
 	void fail_tiktok_studio_start(const QString &profile_id, const QString &output_name,
 		bool start_aitum_output, PreparedLive live, const QString &reason);
@@ -137,8 +158,23 @@ private:
 	QVBoxLayout *profile_list_layout_ = nullptr;
 	QScrollArea *profile_scroll_ = nullptr;
 	QPushButton *add_profile_button_ = nullptr;
+	QScrollArea *detail_scroll_ = nullptr;
 	QWidget *detail_container_ = nullptr;
 	QVBoxLayout *detail_layout_ = nullptr;
+	// The lowest control that must remain visible without scrolling. Step 3
+	// assigns this to the End LIVE button; supplemental guidance and destructive
+	// actions below it scroll instead of being clipped by a short dock.
+	QWidget *detail_minimum_boundary_ = nullptr;
+	int profile_list_content_height_ = 0;
+	int detail_boundary_height_ = 0;
+	int detail_content_height_ = 0;
+	// Some nested Qt form controls resolve their wrapped height only after the
+	// layout pass. This is the last measured profile-list height that still
+	// left the complete detail view visible; -1 starts a fresh measurement.
+	int measured_profile_height_cap_ = -1;
+	// RapidAPI is the longest configuration. Once its Step 3 has been rendered,
+	// keep that required height as the provider-neutral dock reference.
+	int rapidapi_reference_boundary_height_ = 0;
 	std::vector<Profile> profiles_;
 	QSet<QString> outputs_preparing_;
 	int selected_profile_ = -1;
@@ -153,4 +189,7 @@ private:
 	QHash<QString, int> tiktok_studio_heartbeat_status_;
 	QHash<QString, int> tiktok_studio_stale_heartbeat_count_;
 	QHash<QString, quint64> tiktok_studio_account_generation_;
+	// The currently rendered step 3 owns this field. It allows quota changes to
+	// update in place without rebuilding the form while a LIVE is running.
+	QHash<QString, QLabel *> rapidapi_quota_fields_;
 };

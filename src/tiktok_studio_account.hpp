@@ -5,6 +5,27 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QtGlobal>
+
+// Values supplied by RapidAPI response headers. They are account-scoped,
+// non-secret telemetry: a profile never needs to send an extra request merely
+// to draw its usage indicator.
+struct RapidApiQuota {
+	// RapidAPI may provide a relative reset interval rather than a Unix
+	// timestamp. Only a modern calendar timestamp is safe to render as a date.
+	static constexpr qint64 earliest_calendar_reset_epoch_seconds = 946684800; // 2000-01-01 UTC
+
+	qint64 limit = -1;
+	qint64 remaining = -1;
+	qint64 reset_epoch_seconds = 0;
+	qint64 observed_epoch_seconds = 0;
+
+	[[nodiscard]] bool known() const { return limit >= 0 || remaining >= 0; }
+	[[nodiscard]] bool has_calendar_reset() const
+	{
+		return reset_epoch_seconds >= earliest_calendar_reset_epoch_seconds;
+	}
+};
 
 // Secret and account-scoped state for one TikTok LIVE Studio login. The
 // profile INI stores only the stable account_id; this object is persisted in
@@ -19,6 +40,7 @@ struct TikTokStudioAccountCredentials {
 	QString username;
 	QString user_id;
 	QByteArray cookie_jar;
+	RapidApiQuota rapidapi_quota;
 
 	[[nodiscard]] bool has_device() const
 	{

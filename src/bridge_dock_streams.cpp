@@ -55,6 +55,22 @@ QString live_start_action_text(bool starts_aitum_output)
 		: translated_or("Stream.GenerateCredentials", text("Stream.Create"));
 }
 
+void merge_rapidapi_quota(RapidApiQuota *target, const RapidApiQuota &incoming)
+{
+	if (!target)
+		return;
+	if (incoming.limit >= 0)
+		target->limit = incoming.limit;
+	if (incoming.remaining >= 0)
+		target->remaining = incoming.remaining;
+	if (!target->has_calendar_reset())
+		target->reset_epoch_seconds = 0;
+	if (incoming.has_calendar_reset())
+		target->reset_epoch_seconds = incoming.reset_epoch_seconds;
+	if (incoming.observed_epoch_seconds > 0)
+		target->observed_epoch_seconds = incoming.observed_epoch_seconds;
+}
+
 } // namespace
 
 void BridgeDock::build_stream_step(const Profile &profile)
@@ -119,8 +135,67 @@ void BridgeDock::build_stream_step(const Profile &profile)
 				output->setEnabled(editable);
 				refresh_outputs->setEnabled(editable);
 			};
-			apply_output_mode();
-			form->addRow(text("Stream.Output"), output_row);
+		apply_output_mode();
+		form->addRow(text("Stream.Output"), output_row);
+		QCheckBox *dual_layout = nullptr;
+		QComboBox *dual_output = nullptr;
+		if (studio_provider) {
+			dual_layout = new QCheckBox(translated_or("Studio.Stream.DualLayout",
+				QStringLiteral("Dual Layout (Portrait + Landscape)")), group);
+			dual_layout->setChecked(profile.dual_layout_enabled);
+			const bool editable = !profile.live && !profile.preparing && !profile.recovering;
+			dual_layout->setEnabled(editable && profile.dual_layout_available &&
+				!profile.output_name.trimmed().isEmpty());
+			if (!profile.dual_layout_available)
+				dual_layout->setToolTip(translated_or("Studio.Stream.DualLayoutUnavailable",
+					QStringLiteral("Dual Layout is not unlocked for this TikTok account. Refresh the account information first.")));
+			dual_output = new QComboBox(group);
+			auto populate_dual_outputs = [this, profile_id, output, dual_output] {
+				const Profile *current = find_profile(profile_id);
+				const QString saved = current ? current->dual_output_name : QString{};
+				const QString primary = output->currentData().toString();
+				QString diagnostic;
+				const QStringList names = aitum_output_names(&diagnostic);
+				dual_output->blockSignals(true);
+				dual_output->clear();
+				dual_output->addItem(translated_or("Studio.Stream.DualOutputPlaceholder",
+					QStringLiteral("Select landscape output …")), QString{});
+				for (const QString &name : names) {
+					if (name != primary)
+						dual_output->addItem(name, name);
+				}
+				const int saved_index = dual_output->findData(saved);
+				dual_output->setCurrentIndex(saved_index >= 0 ? saved_index : 0);
+				dual_output->blockSignals(false);
+			};
+			populate_dual_outputs();
+			dual_output->setEnabled(editable && profile.dual_layout_enabled &&
+				profile.dual_layout_available);
+			connect(refresh_outputs, &QPushButton::clicked, this, populate_dual_outputs);
+			connect(output, &QComboBox::currentIndexChanged, this,
+				[this, profile_id, output, dual_output, populate_dual_outputs](int) {
+					if (Profile *current = find_profile(profile_id)) {
+						if (current->dual_output_name == output->currentData().toString())
+							current->dual_output_name.clear();
+					}
+					populate_dual_outputs();
+				});
+			connect(dual_layout, &QCheckBox::toggled, this,
+				[this, profile_id, dual_output](bool enabled) {
+					if (Profile *current = find_profile(profile_id)) {
+						current->dual_layout_enabled = enabled;
+						save_profiles();
+					}
+					dual_output->setEnabled(enabled);
+				});
+			connect(dual_output, &QComboBox::currentIndexChanged, this,
+				[this, profile_id, dual_output] {
+					if (Profile *current = find_profile(profile_id)) {
+						current->dual_output_name = dual_output->currentData().toString();
+						save_profiles();
+					}
+				});
+		}
 		auto *title = new QLineEdit(profile.stream_title, group);
 		title->setEnabled(!profile.live && !profile.preparing && !profile.recovering);
 		form->addRow(text("Stream.StreamTitle"), title);
@@ -175,6 +250,42 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		mature->setChecked(profile.mature);
 		mature->setEnabled(!profile.live && !profile.preparing && !profile.recovering);
 		form->addRow(mature);
+		if (dual_layout) {
+			// Dual Layout belongs with the other stream options. Keeping the blocked
+			// state and its explanation together makes it visible to creators who
+			// already have ordinary LIVE access and therefore never see step 2.
+			form->addRow(dual_layout);
+			if (!profile.dual_layout_available) {
+				QString dual_layout_hint;
+				if (profile.dual_layout_status.startsWith(QStringLiteral("locked:"))) {
+					const QString remaining_days = profile.dual_layout_status.section(
+						QLatin1Char(':'), 1);
+					const bool singular_day = remaining_days == QStringLiteral("1");
+					dual_layout_hint = translated_or(singular_day
+						? "Studio.Stream.DualLayoutLockedHintSingular"
+						: "Studio.Stream.DualLayoutLockedHint",
+						singular_day
+							? QStringLiteral("Streame noch an <b>%1 weiteren Tag</b> jeweils mindestens "
+								"25 Minuten, um das Feature automatisch freizuschalten.<br/><br/>"
+								"Die Aktivierung kann anschließend bis zu 48 Stunden dauern.")
+							: QStringLiteral("Streame noch an <b>%1 weiteren Tagen</b> jeweils mindestens "
+								"25 Minuten, um das Feature automatisch freizuschalten.<br/><br/>"
+								"Die Aktivierung kann anschließend bis zu 48 Stunden dauern."))
+						.arg(remaining_days);
+				} else {
+					dual_layout_hint = translated_or("Studio.Stream.DualLayoutUnavailableHint",
+						QStringLiteral("<b>Dual Layout ist für dieses TikTok-Konto noch nicht "
+							"freigeschaltet.</b><br/>TikTok hat noch keine Anzahl "
+							"verbleibender TikTok-LIVE-Studio-Tage gemeldet.<br/><br/>Die "
+							"Freischaltung kann nur durch Streams mit TikTok LIVE Studio "
+							"erfolgen. Streams mit dem Handy oder OBS haben darauf keinen "
+							"Einfluss."));
+				}
+				form->addRow(info_card(dual_layout_hint, group));
+			}
+			form->addRow(translated_or("Studio.Stream.DualOutput",
+				QStringLiteral("Landscape Aitum output")), dual_output);
+		}
 		const FrameSigningCredentials signing_credentials = FrameSigningSettings::load(profile.id);
 		auto *signing_enabled = new QCheckBox(translated_or("Signing.Enable",
 			QStringLiteral("Sign video frames inside OBS (RapidAPI)")), group);
@@ -378,14 +489,18 @@ void BridgeDock::build_stream_step(const Profile &profile)
 		// Every provider reaches the same user-facing LIVE actions here. The
 		// provider determines how a session is created, never how the action is
 		// named in the dock.
-		auto can_start_live = [this, profile_id, output, supports_main_obs_output] {
+		auto can_start_live = [this, profile_id, output, dual_layout, dual_output, supports_main_obs_output] {
 			const Profile *current = find_profile(profile_id);
 			if (!current || current->preparing || current->live || current->recovering ||
 				current->session_uncertain)
 				return false;
 			const bool selected_target = output->currentIndex() >= 0 &&
 				(supports_main_obs_output || !output->currentData().toString().trimmed().isEmpty());
-			return selected_target;
+			const bool dual_target_valid = !current->dual_layout_enabled ||
+				(!output->currentData().toString().trimmed().isEmpty() && dual_output &&
+					!dual_output->currentData().toString().trimmed().isEmpty() &&
+					output->currentData().toString() != dual_output->currentData().toString());
+			return selected_target && dual_target_valid;
 		};
 		const bool manual_return_to_credentials = ProviderRegistry::is_manual(profile.provider_id) &&
 			!profile.live && !profile.preparing && !profile.recovering && !profile.session_uncertain;
@@ -398,6 +513,12 @@ void BridgeDock::build_stream_step(const Profile &profile)
 			profile.session_uncertain) && !profile.ending && !profile.recovering);
 		connect(go_live, &QPushButton::clicked, this, [this] { start_selected_live(); });
 		connect(end_live, &QPushButton::clicked, this, [this] { end_selected_live(); });
+		if (dual_layout) {
+			connect(dual_layout, &QCheckBox::toggled, go_live,
+				[go_live, can_start_live](bool) { go_live->setEnabled(can_start_live()); });
+			connect(dual_output, &QComboBox::currentIndexChanged, go_live,
+				[go_live, can_start_live](int) { go_live->setEnabled(can_start_live()); });
+		}
 		connect(output, &QComboBox::currentIndexChanged, this,
 			[this, profile_id, output, go_live, can_start_live] {
 			if (Profile *current = find_profile(profile_id)) {
@@ -411,6 +532,22 @@ void BridgeDock::build_stream_step(const Profile &profile)
 				QTimer::singleShot(0, this, [this] { rebuild_profile_list(); });
 			}
 		});
+		if (studio_provider) {
+			// This mirrors the account-step quota presentation directly above the
+			// primary LIVE action. Header-derived updates change the field in place,
+			// so an active stream never needs a disruptive form rebuild.
+			auto *quota_row = new QWidget(detail_container_);
+			auto *quota_layout = new QVBoxLayout(quota_row);
+			quota_layout->setContentsMargins(0, 0, 0, 0);
+			quota_layout->setSpacing(3);
+			auto *quota_label = new QLabel(translated_or("Studio.Account.QuotaLabel",
+				QStringLiteral("RapidAPI limit")), quota_row);
+			auto *quota_field = create_rapidapi_quota_field(profile.rapidapi_quota, quota_row);
+			quota_layout->addWidget(quota_label);
+			quota_layout->addWidget(quota_field);
+			rapidapi_quota_fields_.insert(profile.id, quota_field);
+			detail_layout_->addWidget(quota_row);
+		}
 		detail_layout_->addWidget(go_live);
 		if (studio_provider && profile.session_uncertain &&
 			!profile.live_id.isEmpty() && !profile.stream_id.isEmpty() &&
@@ -425,6 +562,9 @@ void BridgeDock::build_stream_step(const Profile &profile)
 			detail_layout_->addWidget(resume_live);
 		}
 		detail_layout_->addWidget(end_live);
+		// The dock must always expose the complete setup and both LIVE actions.
+		// Supplemental content below this point can scroll on a short dock.
+		detail_minimum_boundary_ = end_live;
 		if (profile.session_uncertain) {
 			auto *reset_session = new QPushButton(translated_or("Studio.Stream.ResetLocalSession",
 				QStringLiteral("Reset local LIVE state")), detail_container_);
@@ -577,8 +717,50 @@ void BridgeDock::prepare_output_signing(const QString &profile_id, const QString
 		signing.device_id = credentials.device_id;
 		signing.room_id = room_id;
 		output_signing_.prepare_and_attach(output_name, std::move(api), std::move(signing),
-			std::move(completion));
+			std::move(completion), [this, profile_id](const RapidApiQuota &quota) {
+				record_rapidapi_quota(profile_id, quota);
+			});
 	}
+
+void BridgeDock::record_rapidapi_quota(const QString &profile_id, const RapidApiQuota &quota)
+{
+	if (!quota.known())
+		return;
+	Profile *profile = find_profile(profile_id);
+	if (!profile)
+		return;
+	merge_rapidapi_quota(&profile->rapidapi_quota, quota);
+
+	// A Studio login may be reused by several named profiles. Store its most
+	// recent header-derived value once, then mirror it to those profiles so the
+	// UI never implies that each paired output consumed a separate quota.
+	if (ProviderRegistry::is_tiktok_studio(profile->provider_id) && !profile->account_id.isEmpty()) {
+		TikTokStudioAccountCredentials account = TokenStore::load_tiktok_studio_account(profile->account_id);
+		merge_rapidapi_quota(&account.rapidapi_quota, quota);
+		TokenStore::save_tiktok_studio_account(profile->account_id, account);
+		for (Profile &candidate : profiles_) {
+			if (ProviderRegistry::is_tiktok_studio(candidate.provider_id) &&
+				candidate.account_id == profile->account_id) {
+				merge_rapidapi_quota(&candidate.rapidapi_quota, quota);
+				if (QLabel *field = rapidapi_quota_fields_.value(candidate.id, nullptr))
+					update_rapidapi_quota_field(field, candidate.rapidapi_quota);
+			}
+		}
+	}
+	save_profiles();
+}
+
+void BridgeDock::sync_rapidapi_quota_from_account(const QString &profile_id)
+{
+	Profile *profile = find_profile(profile_id);
+	if (!profile || !ProviderRegistry::is_tiktok_studio(profile->provider_id) ||
+		profile->account_id.isEmpty())
+		return;
+	const TikTokStudioAccountCredentials account =
+		TokenStore::load_tiktok_studio_account(profile->account_id);
+	if (account.rapidapi_quota.known())
+		record_rapidapi_quota(profile_id, account.rapidapi_quota);
+}
 
 void BridgeDock::start_selected_live()
 	{
@@ -641,6 +823,25 @@ void BridgeDock::start_profile_live(const QString &profile_id, bool start_aitum_
 			if (start_aitum_output)
 				outputs_preparing_.remove(profile->output_name);
 			return;
+		}
+		if (profile->dual_layout_enabled) {
+			if (!ProviderRegistry::is_tiktok_studio(profile->provider_id) ||
+				!profile->dual_layout_available) {
+				show_transient_error(translated_or("Studio.Stream.DualLayoutUnavailable",
+					QStringLiteral("Dual Layout is not unlocked for this TikTok account. Refresh the account information first.")));
+				if (start_aitum_output)
+					outputs_preparing_.remove(profile->output_name);
+				return;
+			}
+			if (profile->output_name.trimmed().isEmpty() || profile->dual_output_name.trimmed().isEmpty() ||
+				profile->output_name == profile->dual_output_name) {
+				show_transient_error(translated_or("Studio.Stream.DualOutputRequired",
+					QStringLiteral("Choose two different Aitum outputs for Dual Layout.")));
+				if (start_aitum_output)
+					outputs_preparing_.remove(profile->output_name);
+				return;
+			}
+			outputs_preparing_.insert(profile->dual_output_name);
 		}
 		if (output_in_use_by_another_profile(*profile)) {
 			show_transient_error(text("Error.OutputInUse"));
@@ -946,21 +1147,25 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 	// Aitum vendor action for every provider so the dock's End LIVE button never
 	// leaves its own encoder running after the remote session is closed.
 	const QString output_name = profile->output_name.trimmed();
-	bool output_active = false;
-	QString output_diagnostic;
-	const bool output_state_known = !output_name.isEmpty() && aitum_stream_suite_available() &&
-		aitum_output_is_active(output_name, &output_active, &output_diagnostic);
-	if (output_state_known && output_active) {
-		if (!aitum_stop_output(output_name, &output_diagnostic)) {
+	const QStringList outputs = profile->dual_layout_enabled
+		? QStringList{output_name, profile->dual_output_name.trimmed()} : QStringList{output_name};
+	for (const QString &configured_output : outputs) {
+		if (configured_output.isEmpty() || !aitum_stream_suite_available())
+			continue;
+		bool output_active = false;
+		QString output_diagnostic;
+		const bool output_state_known = aitum_output_is_active(configured_output, &output_active,
+			&output_diagnostic);
+		if (output_state_known && output_active && !aitum_stop_output(configured_output, &output_diagnostic)) {
 			profile->ending = false;
 			profile->diagnostic = text("Diagnostic.Failed").arg(translated_or(
 				"Error.AitumStopFailed", QStringLiteral("Aitum could not stop the output \"%1\": %2"))
-				.arg(output_name, output_diagnostic));
+				.arg(configured_output, output_diagnostic));
 			profile->diagnostic_error = true;
 			save_profiles();
 			refresh_profile_ui(profile_id);
 			show_transient_error(translated_or("Error.AitumStopFailed", QStringLiteral(
-				"Aitum could not stop the output \"%1\": %2")).arg(output_name, output_diagnostic));
+				"Aitum could not stop the output \"%1\": %2")).arg(configured_output, output_diagnostic));
 			return;
 		}
 	}
@@ -968,6 +1173,9 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 			Profile *current = find_profile(profile_id);
 			if (!current)
 				return;
+			// The end request is signed as well. Update the visible Step 3 quota
+			// from its saved account headers before returning to the idle state.
+			sync_rapidapi_quota_from_account(profile_id);
 			current->ending = false;
 			if (!result.ended && !result.stale_session) {
 				current->session_uncertain = true;
@@ -983,6 +1191,11 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 			current->diagnostic_error = false;
 			save_profiles();
 			refresh_profile_ui(profile_id);
+			// The quota already refreshes from the completed end request. Fetch the
+			// account status once as well so a newly changed `days_to_reach` value
+			// is reflected in Step 3 without requiring the creator to revisit Step 2.
+			if (ProviderRegistry::is_tiktok_studio(current->provider_id))
+				refresh_tiktok_studio_account(profile_id, false);
 			if (result.stale_session) {
 				const bool german = obs_language().startsWith(QStringLiteral("de"), Qt::CaseInsensitive);
 				QMessageBox::information(this, text("Plugin.Name"), translated_or("Stream.StaleSessionCleared",
@@ -1016,6 +1229,10 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 					if (!current || !current->live || current->ending || current->recovering ||
 						!ProviderRegistry::is_tiktok_studio(current->provider_id))
 						return;
+					// Heartbeats already consume a signed RapidAPI request. Keep the
+					// Step 3 quota field current from those response headers instead
+					// of adding a polling request solely for the display.
+					sync_rapidapi_quota_from_account(profile_id);
 					if (!result.error.isEmpty()) {
 						const int stale_count = result.error.contains(QStringLiteral("30003"))
 							? tiktok_studio_stale_heartbeat_count_.value(profile_id) + 1 : 0;
@@ -1027,6 +1244,7 @@ void BridgeDock::end_profile_live(const QString &profile_id)
 							current->diagnostic_error = false;
 							save_profiles();
 							refresh_profile_ui(profile_id);
+							refresh_tiktok_studio_account(profile_id, false);
 							return;
 						}
 						tiktok_studio_heartbeat_failed_.insert(profile_id);

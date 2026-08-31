@@ -4,6 +4,7 @@
 #pragma once
 
 #include "hosted_signing_service.hpp"
+#include "tiktok_studio_account.hpp"
 
 #include <QMap>
 #include <QString>
@@ -32,6 +33,7 @@ struct FrameSignResult {
 
 struct FrameSignBatch {
 	QMap<qint64, FrameSignResult> signatures;
+	RapidApiQuota quota;
 	QString error;
 
 	[[nodiscard]] bool valid() const { return !signatures.isEmpty() && error.isEmpty(); }

@@ -5,11 +5,14 @@
 
 #include <curl/curl.h>
 
+#include <QDateTime>
 #include <QJsonArray>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 
 #include <algorithm>
+#include <initializer_list>
 #include <limits>
 
 namespace {
@@ -19,6 +22,7 @@ constexpr qsizetype maximum_response_bytes = 16 * 1024 * 1024;
 struct HttpResult {
 	long status = 0;
 	QByteArray body;
+	QHash<QByteArray, QByteArray> headers;
 	QString error;
 };
 
@@ -46,6 +50,46 @@ size_t append_response(char *data, size_t size, size_t count, void *user_data)
 	}
 	sink->body->append(data, static_cast<qsizetype>(bytes));
 	return bytes;
+}
+
+size_t append_header(char *data, size_t size, size_t count, void *user_data)
+{
+	auto *result = static_cast<HttpResult *>(user_data);
+	if (!result || (count != 0 && size > std::numeric_limits<size_t>::max() / count))
+		return 0;
+	const QByteArray line(data, static_cast<qsizetype>(size * count));
+	const int separator = line.indexOf(':');
+	if (separator > 0) {
+		const QByteArray name = line.left(separator).trimmed().toLower();
+		const QByteArray value = line.mid(separator + 1).trimmed();
+		if (!name.isEmpty() && value.size() <= 4096)
+			result->headers.insert(name, value);
+	}
+	return size * count;
+}
+
+qint64 quota_number(const QHash<QByteArray, QByteArray> &headers,
+	std::initializer_list<const char *> names)
+{
+	for (const char *name : names) {
+		bool ok = false;
+		const qint64 value = QString::fromLatin1(headers.value(name)).trimmed().toLongLong(&ok);
+		if (ok && value >= 0)
+			return value;
+	}
+	return -1;
+}
+
+RapidApiQuota quota_from_headers(const QHash<QByteArray, QByteArray> &headers)
+{
+	RapidApiQuota quota;
+	quota.limit = quota_number(headers, {"x-ratelimit-requests-limit", "x-quota-limit"});
+	quota.remaining = quota_number(headers, {"x-ratelimit-requests-remaining", "x-quota-remaining"});
+	quota.reset_epoch_seconds = quota_number(headers,
+		{"x-ratelimit-requests-reset", "x-quota-reset"});
+	if (quota.known())
+		quota.observed_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+	return quota;
 }
 
 int cancel_transfer(void *user_data, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
@@ -100,6 +144,8 @@ HttpResult post_json(const HostedSigningServiceConfig &service, const QUrl &url,
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, append_response);
 	ResponseSink sink{&result.body};
 	curl_easy_setopt(handle, CURLOPT_WRITEDATA, &sink);
+	curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, append_header);
+	curl_easy_setopt(handle, CURLOPT_HEADERDATA, &result);
 	curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
 	curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, cancel_transfer);
 	curl_easy_setopt(handle, CURLOPT_XFERINFODATA, cancelled);
@@ -216,6 +262,7 @@ FrameSignBatch FrameSignClient::fetch_batch(const HostedSigningServiceConfig &se
 		return batch;
 	}
 	batch = parse_batch_response(response.body, response.status, input);
+	batch.quota = quota_from_headers(response.headers);
 	if (!batch.error.isEmpty() && !service.api_key.isEmpty())
 		batch.error.replace(service.api_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
 	return batch;

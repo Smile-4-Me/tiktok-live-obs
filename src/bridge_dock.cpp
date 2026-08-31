@@ -22,6 +22,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStandardPaths>
@@ -70,6 +71,15 @@ BridgeDock::BridgeDock(QWidget *obs_main_window)
 		tiktok_studio_heartbeat_timer_->start();
 		qApp->installEventFilter(this);
 	}
+
+void BridgeDock::resizeEvent(QResizeEvent *event)
+{
+	QWidget::resizeEvent(event);
+	// OBS' dock splitter can resize this widget without consulting its size hint.
+	// Recalculate wrapped controls for the new width before allocating profile
+	// rows, then apply the detail-first vertical allocation.
+	update_detail_viewport_minimum();
+}
 
 bool BridgeDock::eventFilter(QObject *watched, QEvent *event)
 	{
@@ -411,7 +421,8 @@ std::vector<Profile *> BridgeDock::profiles_for_output(const QString &output_nam
 	{
 		std::vector<Profile *> matches;
 		for (Profile &profile : profiles_) {
-			if (profile.output_name != output_name)
+			if (profile.output_name != output_name &&
+				(!profile.dual_layout_enabled || profile.dual_output_name != output_name))
 				continue;
 			if (ready_only && (!profile.can_go_live || profile.live || profile.preparing ||
 				profile.session_uncertain ||
@@ -425,7 +436,8 @@ std::vector<Profile *> BridgeDock::profiles_for_output(const QString &output_nam
 Profile *BridgeDock::live_profile_for_output(const QString &output_name)
 	{
 		for (Profile &profile : profiles_)
-			if (profile.output_name == output_name && profile.live)
+			if ((profile.output_name == output_name ||
+				(profile.dual_layout_enabled && profile.dual_output_name == output_name)) && profile.live)
 				return &profile;
 		return nullptr;
 	}

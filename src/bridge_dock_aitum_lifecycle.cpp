@@ -9,6 +9,7 @@
 
 #include <QTimer>
 
+#include <memory>
 #include <utility>
 
 // This file contains the provider-neutral Aitum output lifecycle. Providers
@@ -17,17 +18,24 @@
 
 bool BridgeDock::output_in_use_by_another_profile(const Profile &profile) const
 {
-	const bool credential_only_target =
-		profile.output_name.isEmpty() || !aitum_stream_suite_available();
+	const QStringList requested_outputs = profile.dual_layout_enabled
+		? QStringList{profile.output_name, profile.dual_output_name}
+		: QStringList{profile.output_name};
+	const bool credential_only_target = profile.output_name.isEmpty() || !aitum_stream_suite_available();
 	for (const Profile &candidate : profiles_) {
 		if (candidate.id == profile.id ||
 			(!candidate.live && !candidate.preparing && !candidate.session_uncertain))
 			continue;
-		const bool candidate_credential_only_target =
-			candidate.output_name.isEmpty() || !aitum_stream_suite_available();
+		const bool candidate_credential_only_target = candidate.output_name.isEmpty() ||
+			!aitum_stream_suite_available();
+		const QStringList candidate_outputs = candidate.dual_layout_enabled
+			? QStringList{candidate.output_name, candidate.dual_output_name}
+			: QStringList{candidate.output_name};
+		bool overlaps = false;
+		for (const QString &requested : requested_outputs)
+			overlaps = overlaps || (!requested.isEmpty() && candidate_outputs.contains(requested));
 		if ((credential_only_target && candidate_credential_only_target) ||
-			(!credential_only_target && !candidate_credential_only_target &&
-				candidate.output_name == profile.output_name))
+			(!credential_only_target && !candidate_credential_only_target && overlaps))
 			return true;
 	}
 	return false;
@@ -101,6 +109,11 @@ void BridgeDock::verify_aitum_output_started(const QString &profile_id, const QS
 		profile->diagnostic_error = false;
 		save_profiles();
 		refresh_profile_ui(profile_id);
+		// A confirmed output start is a stable lifecycle point for a one-time
+		// account refresh. This keeps the Dual Layout progress in Step 3 in sync
+		// without adding any polling beside the existing RapidAPI quota heartbeat.
+		if (ProviderRegistry::is_tiktok_studio(profile->provider_id))
+			refresh_tiktok_studio_account(profile_id, false);
 		return;
 	}
 
@@ -136,5 +149,47 @@ void BridgeDock::start_aitum_output_and_verify(const QString &profile_id, const 
 			refresh_profile_ui(profile_id);
 		}
 		verify_aitum_output_started(profile_id, output_name, 0);
+	});
+}
+
+void BridgeDock::start_aitum_output_and_verify_then(const QString &profile_id,
+	const QString &output_name, std::function<void()> on_started,
+	std::function<void(const QString &)> on_start_failure)
+{
+	QTimer::singleShot(250, this, [this, profile_id, output_name,
+		on_started = std::move(on_started), on_start_failure = std::move(on_start_failure)]() mutable {
+		QString diagnostic;
+		if (!aitum_start_output(output_name, &diagnostic)) {
+			outputs_preparing_.remove(output_name);
+			if (on_start_failure)
+				on_start_failure(diagnostic);
+			return;
+		}
+		auto verify = std::make_shared<std::function<void(int)>>();
+		*verify = [this, profile_id, output_name, on_started = std::move(on_started),
+			on_start_failure = std::move(on_start_failure), verify](int attempt) mutable {
+			Profile *profile = find_profile(profile_id);
+			if (!profile || profile->ending) {
+				outputs_preparing_.remove(output_name);
+				return;
+			}
+			bool active = false;
+			QString state_diagnostic;
+			if (aitum_output_is_active(output_name, &active, &state_diagnostic) && active) {
+				outputs_preparing_.remove(output_name);
+				if (on_started)
+					on_started();
+				return;
+			}
+			if (attempt + 1 < 20) {
+				QTimer::singleShot(500, this, [verify, attempt] { (*verify)(attempt + 1); });
+				return;
+			}
+			outputs_preparing_.remove(output_name);
+			if (on_start_failure)
+				on_start_failure(state_diagnostic.isEmpty()
+					? QStringLiteral("Aitum did not report the output as active.") : state_diagnostic);
+		};
+		(*verify)(0);
 	});
 }

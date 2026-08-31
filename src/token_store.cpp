@@ -189,6 +189,10 @@ bool TokenStore::save_tiktok_studio_account(const QString &account_id,
 		{QStringLiteral("live_studio_version"), stored.live_studio_version},
 		{QStringLiteral("username"), stored.username},
 		{QStringLiteral("user_id"), stored.user_id},
+		{QStringLiteral("rapidapi_quota_limit"), stored.rapidapi_quota.limit},
+		{QStringLiteral("rapidapi_quota_remaining"), stored.rapidapi_quota.remaining},
+		{QStringLiteral("rapidapi_quota_reset"), stored.rapidapi_quota.reset_epoch_seconds},
+		{QStringLiteral("rapidapi_quota_observed"), stored.rapidapi_quota.observed_epoch_seconds},
 		{QStringLiteral("cookie_chunks"), cookie_chunks},
 		{QStringLiteral("cookie_set"), cookie_set},
 	};
@@ -226,6 +230,14 @@ TikTokStudioAccountCredentials TokenStore::load_tiktok_studio_account(const QStr
 		credentials.live_studio_version = version;
 	credentials.username = object.value(QStringLiteral("username")).toString();
 	credentials.user_id = object.value(QStringLiteral("user_id")).toString();
+	if (object.contains(QStringLiteral("rapidapi_quota_limit")))
+		credentials.rapidapi_quota.limit = object.value(QStringLiteral("rapidapi_quota_limit")).toVariant().toLongLong();
+	if (object.contains(QStringLiteral("rapidapi_quota_remaining")))
+		credentials.rapidapi_quota.remaining = object.value(QStringLiteral("rapidapi_quota_remaining")).toVariant().toLongLong();
+	if (object.contains(QStringLiteral("rapidapi_quota_reset")))
+		credentials.rapidapi_quota.reset_epoch_seconds = object.value(QStringLiteral("rapidapi_quota_reset")).toVariant().toLongLong();
+	if (object.contains(QStringLiteral("rapidapi_quota_observed")))
+		credentials.rapidapi_quota.observed_epoch_seconds = object.value(QStringLiteral("rapidapi_quota_observed")).toVariant().toLongLong();
 	const int cookie_chunks = qBound(0, object.value(QStringLiteral("cookie_chunks")).toInt(),
 		CredentialChunks::maximum_chunks);
 	const int cookie_set = qBound(0, object.value(QStringLiteral("cookie_set")).toInt(), 1);

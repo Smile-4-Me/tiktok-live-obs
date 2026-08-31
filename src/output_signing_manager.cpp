@@ -4,6 +4,7 @@
 #include "output_signing_manager.hpp"
 #include "native_platform.hpp"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QMetaObject>
 #include <QPointer>
@@ -151,19 +152,44 @@ std::optional<SignedVideoCodec> video_codec(const char *name)
 	return std::nullopt;
 }
 
+QString signing_batch_key(const HostedSigningServiceConfig &api, const FrameSignInput &input)
+{
+	QByteArray source = api.base_url.toString(QUrl::FullyEncoded).toUtf8();
+	source += '\0';
+	source += api.api_key.toUtf8();
+	source += '\0';
+	source += input.aid.toUtf8();
+	source += '\0';
+	source += input.uid.toUtf8();
+	source += '\0';
+	source += input.device_id.toUtf8();
+	source += '\0';
+	source += input.room_id.toUtf8();
+	source += '\0';
+	source += input.frame_type.toUtf8();
+	return QString::fromLatin1(QCryptographicHash::hash(source,
+		QCryptographicHash::Sha256).toHex());
+}
+
+bool batch_is_fresh(const FrameSignBatch &batch, qint64 now)
+{
+	return batch.valid() && batch.last_timestamp() >= now + 90;
+}
+
 } // namespace
 
 struct OutputSigningManager::Session : std::enable_shared_from_this<OutputSigningManager::Session> {
 	Session(OutputSigningManager *session_owner, QString output_name, HostedSigningServiceConfig api_config,
-		SignedSeiConfig signing_config)
+		SignedSeiConfig signing_config, OutputSigningManager::QuotaCallback quota_callback)
 		: owner(session_owner), name(std::move(output_name)), api(std::move(api_config)),
-		  signing(std::move(signing_config)), metadata(signing)
+		  signing(std::move(signing_config)), metadata(signing), quota_callback(std::move(quota_callback))
 	{
 		input.aid = signing.aid;
 		input.uid = signing.uid;
 		input.device_id = signing.device_id;
 		input.room_id = signing.room_id;
 		input.frame_type = QStringLiteral("2");
+		batch_key = signing_batch_key(api, input);
 	}
 
 	OutputSigningManager *owner = nullptr;
@@ -171,6 +197,8 @@ struct OutputSigningManager::Session : std::enable_shared_from_this<OutputSignin
 	HostedSigningServiceConfig api;
 	SignedSeiConfig signing;
 	FrameSignInput input;
+	QString batch_key;
+	OutputSigningManager::QuotaCallback quota_callback;
 	SignedSeiSession metadata;
 	obs_output_t *output = nullptr;
 	std::atomic_bool refreshing = false;
@@ -230,7 +258,7 @@ void OutputSigningManager::rebind_main_output()
 }
 
 void OutputSigningManager::prepare_and_attach(const QString &output_name, HostedSigningServiceConfig api,
-	SignedSeiConfig signing, Completion completion)
+	SignedSeiConfig signing, Completion completion, QuotaCallback quota_callback)
 {
 	if (!api.valid()) {
 		completion(false, QStringLiteral("The RapidAPI frame-signing URL or key is missing or invalid."));
@@ -266,8 +294,16 @@ void OutputSigningManager::prepare_and_attach(const QString &output_name, Hosted
 	}
 	obs_api().output_release(probe);
 	detach(output_key);
-	auto session = std::make_shared<Session>(this, output_key, std::move(api), std::move(signing));
+	auto session = std::make_shared<Session>(this, output_key, std::move(api), std::move(signing),
+		std::move(quota_callback));
 	pending_.insert(output_key, session);
+	const FrameSignBatch cached = shared_batches_.value(session->batch_key);
+	if (batch_is_fresh(cached, QDateTime::currentSecsSinceEpoch())) {
+		QTimer::singleShot(0, this, [this, session, cached, completion = std::move(completion)]() mutable {
+			finish_initial_prepare(session, cached, std::move(completion));
+		});
+		return;
+	}
 	QPointer<OutputSigningManager> guard(this);
 	auto completion_holder = std::make_shared<Completion>(std::move(completion));
 	if (!launch_worker([guard, session, completion_holder]() mutable {
@@ -295,10 +331,13 @@ void OutputSigningManager::finish_initial_prepare(const std::shared_ptr<Session>
 	if (pending_.value(session->name) != session)
 		return;
 	pending_.remove(session->name);
+	if (session->quota_callback && batch.quota.known())
+		session->quota_callback(batch.quota);
 	if (!batch.valid()) {
 		completion(false, batch.error);
 		return;
 	}
+	shared_batches_.insert(session->batch_key, batch);
 	obs_output_t *output = find_output(session->name);
 	if (!output) {
 		completion(false, session->name == main_stream_key()
@@ -428,28 +467,55 @@ void OutputSigningManager::finish_fatal(const std::shared_ptr<Session> &session,
 void OutputSigningManager::refresh_due_sessions()
 {
 	const qint64 now = QDateTime::currentSecsSinceEpoch();
+	QHash<QString, std::vector<std::shared_ptr<Session>>> due_groups;
 	for (const std::shared_ptr<Session> &session : std::as_const(sessions_)) {
 		const qint64 cache_until = session->metadata.cache_last_timestamp();
 		if (cache_until - now > 60 || session->refreshing.exchange(true))
 			continue;
-		const qint64 start = now > cache_until + 1 ? now : cache_until + 1;
-		QPointer<OutputSigningManager> guard(this);
-		if (!launch_worker([guard, session, start] {
-			FrameSignInput input = session->input;
-			input.timestamp_seconds = start;
-			FrameSignBatch batch = FrameSignClient::fetch_batch(session->api, input, start, 300, 1,
-				&session->cancelled);
-			if (!guard) {
-				session->refreshing = false;
-				return;
-			}
-			QMetaObject::invokeMethod(guard, [guard, session, batch = std::move(batch)]() mutable {
-				session->refreshing = false;
-				if (guard && batch.valid() && guard->sessions_.value(session->name) == session)
-					session->metadata.merge_signatures(batch.signatures);
-			}, Qt::QueuedConnection);
-		}))
+		const FrameSignBatch cached = shared_batches_.value(session->batch_key);
+		if (batch_is_fresh(cached, now)) {
+			session->metadata.merge_signatures(cached.signatures);
 			session->refreshing = false;
+			if (session->quota_callback && cached.quota.known())
+				session->quota_callback(cached.quota);
+			continue;
+		}
+		due_groups[session->batch_key].push_back(session);
+	}
+	for (auto group = due_groups.cbegin(); group != due_groups.cend(); ++group) {
+		const QString batch_key = group.key();
+		const std::vector<std::shared_ptr<Session>> sessions = group.value();
+		if (sessions.empty())
+			continue;
+		const std::shared_ptr<Session> leader = sessions.front();
+		QPointer<OutputSigningManager> guard(this);
+		if (!launch_worker([guard, sessions, leader, batch_key, now] {
+			FrameSignInput input = leader->input;
+			input.timestamp_seconds = now;
+			// All sessions in this group share the same account, device, room and
+			// signer key. Fetching once avoids spending a second RapidAPI batch for
+			// the paired Dual Layout encoder.
+			FrameSignBatch batch = FrameSignClient::fetch_batch(leader->api, input, now, 300, 1);
+			if (!guard)
+				return;
+			QMetaObject::invokeMethod(guard,
+				[guard, sessions, batch_key, batch = std::move(batch)]() mutable {
+					if (!guard)
+						return;
+					if (batch.valid())
+						guard->shared_batches_.insert(batch_key, batch);
+					for (const std::shared_ptr<Session> &session : sessions) {
+						session->refreshing = false;
+						if (session->quota_callback && batch.quota.known())
+							session->quota_callback(batch.quota);
+						if (batch.valid() && guard->sessions_.value(session->name) == session)
+							session->metadata.merge_signatures(batch.signatures);
+					}
+				}, Qt::QueuedConnection);
+		})) {
+			for (const std::shared_ptr<Session> &session : sessions)
+				session->refreshing = false;
+		}
 	}
 }
 

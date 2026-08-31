@@ -196,6 +196,8 @@ add_library(tiktok-live-obs MODULE
 	 src/tiktok_request_signer.cpp
 	 src/tiktok_request_signer.hpp
 	 src/tiktok_studio_account.hpp
+	 src/tiktok_browser_session_adapter.cpp
+	 src/tiktok_browser_session_adapter.hpp
 	 src/tiktok_studio_client.cpp
 	 src/tiktok_studio_client.hpp
 	 src/tiktok_studio_device.cpp
@@ -408,6 +410,11 @@ if(TIKTOK_LIVE_OBS_BUILD_TESTS)
 	set(TIKTOK_TEST_NAMES provider-registry-harness
 		media-signing-pipeline tiktok-studio-protocol credential-chunk-boundary
 		profile-live-session-transitions profile-account-status-mapping)
+	add_test(NAME locale-catalog-contract
+		COMMAND ${CMAKE_COMMAND}
+			-DTIKTOK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+			-P ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_locale_contract.cmake)
+	list(APPEND TIKTOK_TEST_NAMES locale-catalog-contract)
 	if(WIN32)
 		add_executable(tiktok-live-obs-token-store-smoke
 			tests/token_store_smoke.cpp

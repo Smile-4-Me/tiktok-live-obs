@@ -34,6 +34,11 @@ The plugin stores the following in the operating system's per-user secret store.
 - LIVE Studio device/install identifiers and account metadata; and
 - the LIVE Studio cookie jar, split into 2,048-byte native-keyring entries when needed.
 
+RapidAPI quota metadata (limit, remaining amount, reset value, and observation
+time) is stored with the same account-scoped credential metadata. It is not a
+credential and is displayed only from headers that an existing signer request
+already returned; the plugin does not make a separate usage request.
+
 These values are **not** written to the plugin's INI files. The native secret store protects them from ordinary file browsing, but software running as the same signed-in user may be able to request them. It cannot protect against malware or a compromised operating-system account. The plugin does not silently downgrade to plaintext JSON when a native secret-store write fails.
 
 For a saved LIVE Studio account, the device/install identity remains fixed until **Delete TikTok login** is used. TikTok response cookies are merged by the HTTP session and the refreshed cookie jar is written back to that same account after login, account, game-list, continuation, create, heartbeat, resume, and end requests.
@@ -67,6 +72,13 @@ When **Sign video frames inside OBS** is enabled, the plugin sends HTTPS POST re
 The plugin requests a five-minute signature window before output start and refreshes it before expiry while the signing session remains attached. It receives signed text values and keeps them in memory for the active output. It does **not** send video frames, audio, stream keys, stream URLs, titles, categories, thumbnails, or encoded packet contents to RapidAPI. Redirects are disabled so the RapidAPI key cannot be forwarded to another host, TLS verification remains enabled, and responses have a 16 MiB limit.
 
 For Streamlabs browser login, the plugin temporarily runs a local callback listener and opens the Streamlabs/TikTok login flow in the user's browser. The LIVE Studio provider instead displays a locally generated QR image inside OBS and polls TikTok directly.
+
+The LIVE Studio source contains an explicitly user-confirmed browser-session
+adapter boundary, but this release includes no browser-profile reader or
+collector. It does not search browser profiles, decrypt browser databases, or
+extract browser cookies. If a future collector supplies a TikTok-only cookie
+jar, the existing client validates it through the normal account flow and the
+secret store persists only a successful session.
 
 The plugin does not upload configuration or credentials to a server controlled by this project. RapidAPI and the signer publisher process the request fields above under their own terms and privacy policies; subscribing to or using that service is the user's choice.
 

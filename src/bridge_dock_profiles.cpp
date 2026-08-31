@@ -27,6 +27,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSizePolicy>
 #include <QTimer>
 #include <QToolBar>
@@ -80,6 +81,41 @@ QString profile_heading(const Profile &profile)
 		.arg(profile.display_name, provider_display_name(profile.provider_id), visible_tiktok_username(profile));
 }
 
+int layout_content_height(const QLayout *layout)
+{
+	if (!layout)
+		return 0;
+
+	int required_height = layout->contentsMargins().top();
+	for (int index = 0; index < layout->count(); ++index) {
+		const QLayoutItem *item = layout->itemAt(index);
+		if (!item)
+			continue;
+		required_height += item->sizeHint().expandedTo(item->minimumSize()).height();
+		if (index + 1 < layout->count())
+			required_height += layout->spacing();
+	}
+	return required_height + layout->contentsMargins().bottom();
+}
+
+int layout_content_height_for_width(const QLayout *layout, int width)
+{
+	const int natural_height = layout_content_height(layout);
+	if (!layout || width <= 0 || !layout->hasHeightForWidth())
+		return natural_height;
+	return std::max(natural_height, layout->totalHeightForWidth(width));
+}
+
+int layout_item_height_for_width(const QLayoutItem *item, int width)
+{
+	if (!item)
+		return 0;
+	const int natural_height = item->sizeHint().expandedTo(item->minimumSize()).height();
+	if (!item->hasHeightForWidth() || width <= 0)
+		return natural_height;
+	return std::max(natural_height, item->heightForWidth(width));
+}
+
 } // namespace
 
 Profile BridgeDock::new_profile(const QString &name) const
@@ -108,9 +144,10 @@ QLabel *BridgeDock::info_card(const QString &content, QWidget *parent) const
 
 void BridgeDock::build_ui()
 	{
-		auto *layout = new QVBoxLayout(this);
-		layout->setContentsMargins(10, 10, 10, 10);
-		layout->setSpacing(8);
+	auto *layout = new QVBoxLayout(this);
+	layout->setContentsMargins(10, 10, 10, 10);
+	layout->setSpacing(8);
+	layout->setAlignment(Qt::AlignTop);
 
 		auto *profiles_label = new QLabel(text("Profiles.Title"), this);
 		profiles_label->setStyleSheet(QStringLiteral("font-weight: 600;"));
@@ -125,6 +162,12 @@ void BridgeDock::build_ui()
 		profile_scroll_->setWidget(profile_list_container);
 		profile_scroll_->setWidgetResizable(true);
 		profile_scroll_->setFrameShape(QFrame::NoFrame);
+		profile_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		profile_scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+		// The dock height is allocated explicitly after both scroll areas are
+		// populated. The profile list must never claim room that the complete
+		// configuration form needs.
+		profile_scroll_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 		layout->addWidget(profile_scroll_);
 
 		add_profile_button_ = new QPushButton(text("Profiles.Add"), this);
@@ -142,10 +185,21 @@ void BridgeDock::build_ui()
 		separator->setFrameShadow(QFrame::Sunken);
 		layout->addWidget(separator);
 
-		detail_container_ = new QWidget(this);
+		detail_scroll_ = new QScrollArea(this);
+		detail_scroll_->setWidgetResizable(true);
+		detail_scroll_->setFrameShape(QFrame::NoFrame);
+		detail_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		detail_scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+	detail_scroll_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+		detail_container_ = new QWidget(detail_scroll_);
 		detail_layout_ = new QVBoxLayout(detail_container_);
 		detail_layout_->setContentsMargins(0, 0, 0, 0);
-		layout->addWidget(detail_container_, 1);
+		detail_scroll_->setWidget(detail_container_);
+	layout->addWidget(detail_scroll_);
+	// The profile list and lower form receive exact heights in
+	// rebalance_dock_height(). When every existing profile is already visible,
+	// the remaining dock height belongs to the configuration viewport, so it
+	// reaches the bottom edge instead of leaving a dead strip below it.
 	}
 
 void BridgeDock::clear_layout(QLayout *layout)
@@ -186,15 +240,153 @@ void BridgeDock::rebuild_profile_list()
 			profile_list_layout_->addWidget(row);
 	}
 
-	// Use only the space needed for one to five profiles. A sixth profile keeps
-	// the compact five-row viewport and activates the scroll bar.
-	constexpr int visible_profile_rows = 5;
+	// Keep only the rows that exist, up to a three-row minimum. Extra profiles
+	// are exposed only after the entire lower configuration fits.
+	constexpr int minimum_visible_profile_rows = 3;
 	constexpr int list_spacing = 2;
-	const int displayed_rows = std::min(static_cast<int>(profiles_.size()), visible_profile_rows);
-	const int profile_list_height = displayed_rows > 0
-		? displayed_rows * ProfileRow::kHeight + (displayed_rows - 1) * list_spacing
+	const int profile_count = static_cast<int>(profiles_.size());
+	const int minimum_rows = std::min(profile_count, minimum_visible_profile_rows);
+	const int minimum_height = minimum_rows > 0
+		? minimum_rows * ProfileRow::kHeight + (minimum_rows - 1) * list_spacing
 		: 0;
-	profile_scroll_->setFixedHeight(profile_list_height);
+	profile_list_content_height_ = profile_count > 0
+		? profile_count * ProfileRow::kHeight + (profile_count - 1) * list_spacing
+		: 0;
+	measured_profile_height_cap_ = -1;
+	profile_scroll_->setFixedHeight(minimum_height);
+	rebalance_dock_height();
+}
+
+void BridgeDock::update_detail_viewport_minimum()
+{
+	if (!detail_scroll_ || !detail_layout_)
+		return;
+	measured_profile_height_cap_ = -1;
+	// A word-wrapped notice has a larger real height in a narrow dock than its
+	// unconstrained size hint. Reserve against the actual viewport width, or Qt
+	// would expose extra profile rows while the lower form still scrolls.
+	const int viewport_width = detail_scroll_->viewport()->width();
+	const QMargins detail_margins = detail_layout_->contentsMargins();
+	const int content_width = std::max(0, viewport_width - detail_margins.left() - detail_margins.right());
+
+	// The standard detail form has a natural size hint. In Step 3 we deliberately
+	// stop at End LIVE so the action is never below the fold; explanatory cards
+	// and the delete action remain reachable through the same vertical scrollbar.
+	int required_height = detail_layout_->contentsMargins().top();
+	bool found_boundary = detail_minimum_boundary_ == nullptr;
+	for (int index = 0; index < detail_layout_->count(); ++index) {
+		QLayoutItem *item = detail_layout_->itemAt(index);
+		if (!item)
+			continue;
+		required_height += layout_item_height_for_width(item, content_width);
+		if (item->widget() == detail_minimum_boundary_) {
+			found_boundary = true;
+			break;
+		}
+		if (index + 1 < detail_layout_->count())
+			required_height += detail_layout_->spacing();
+	}
+	detail_content_height_ = layout_content_height_for_width(detail_layout_, viewport_width);
+	if (!found_boundary) {
+		required_height = detail_content_height_;
+	} else {
+		required_height += detail_layout_->contentsMargins().bottom();
+	}
+
+	detail_boundary_height_ = required_height;
+	if (const Profile *profile = selected_profile(); profile && detail_minimum_boundary_ &&
+		ProviderRegistry::is_tiktok_studio(profile->provider_id)) {
+		rapidapi_reference_boundary_height_ = detail_boundary_height_;
+	}
+	rebalance_dock_height();
+}
+
+void BridgeDock::rebalance_dock_height()
+{
+	if (!profile_scroll_ || !detail_scroll_ || !detail_layout_)
+		return;
+	auto *root_layout = qobject_cast<QVBoxLayout *>(layout());
+	if (!root_layout)
+		return;
+
+	root_layout->activate();
+	int fixed_height = root_layout->contentsMargins().top() + root_layout->contentsMargins().bottom();
+	for (int index = 0; index < root_layout->count(); ++index) {
+		QLayoutItem *item = root_layout->itemAt(index);
+		if (!item)
+			continue;
+		if (item->widget() != profile_scroll_ && item->widget() != detail_scroll_) {
+			const QSize preferred = item->sizeHint().expandedTo(item->minimumSize());
+			fixed_height += preferred.height();
+		}
+		if (index + 1 < root_layout->count())
+			fixed_height += root_layout->spacing();
+	}
+
+	constexpr int minimum_visible_profile_rows = 3;
+	constexpr int list_spacing = 2;
+	const int profile_count = static_cast<int>(profiles_.size());
+	const int minimum_profile_rows = std::min(profile_count, minimum_visible_profile_rows);
+	const int minimum_profile_height = minimum_profile_rows > 0
+		? minimum_profile_rows * ProfileRow::kHeight +
+			(minimum_profile_rows - 1) * list_spacing
+		: 0;
+	const int detail_baseline = std::max(detail_boundary_height_, rapidapi_reference_boundary_height_);
+	// `QVBoxLayout::sizeHint()` can inherit a currently enlarged scroll-area
+	// viewport. Use only the natural widget heights instead, so an empty area
+	// below "Profil löschen" is returned to the profile list first.
+	const int detail_full_height = std::max(detail_baseline, detail_content_height_);
+
+	// The minimum is always the three-row profile viewport plus the complete
+	// RapidAPI path down through End LIVE. If OBS is in the middle of a splitter
+	// drag, the scroll areas remain valid until the dock reaches this boundary.
+	setMinimumHeight(fixed_height + minimum_profile_height + detail_baseline);
+
+	const int available_scroll_height = std::max(0, height() - fixed_height);
+	const int maximum_profile_height = measured_profile_height_cap_ < 0
+		? profile_list_content_height_
+		: std::min(profile_list_content_height_, measured_profile_height_cap_);
+	int profile_height = minimum_profile_height;
+	int detail_height = std::max(detail_baseline, available_scroll_height - profile_height);
+	if (available_scroll_height >= detail_full_height + minimum_profile_height) {
+		// First reveal all supplemental content below End LIVE. Only genuine spare
+		// height after that may reveal more than the minimum profile rows. Once
+		// every profile is visible, the configuration viewport owns any remaining
+		// height so a tall dock has no unused strip below its content.
+		detail_height = detail_full_height;
+		profile_height = std::min(maximum_profile_height,
+			available_scroll_height - detail_height);
+		detail_height = std::max(detail_full_height,
+			available_scroll_height - profile_height);
+	}
+
+	profile_scroll_->setFixedHeight(profile_height);
+	detail_scroll_->setFixedHeight(detail_height);
+
+	// QGroupBox/QFormLayout can report their final word-wrapped height only
+	// after the widgets receive their geometry. Verify the real scroll range in
+	// the next event-loop turn. On overflow, return exactly one row to the
+	// lower form and measure again; this finds the maximum safe number of rows
+	// instead of jumping straight from every profile to the three-row minimum.
+	if (profile_height > minimum_profile_height) {
+		QTimer::singleShot(0, this, [this] {
+			if (!profile_scroll_ || !detail_scroll_ ||
+				detail_scroll_->verticalScrollBar()->maximum() <= 0)
+				return;
+			constexpr int list_spacing = 2;
+			const int profile_count = static_cast<int>(profiles_.size());
+			const int minimum_rows = std::min(profile_count, 3);
+			const int minimum_height = minimum_rows > 0
+				? minimum_rows * ProfileRow::kHeight + (minimum_rows - 1) * list_spacing
+				: 0;
+			const int next_cap = std::max(minimum_height,
+				profile_scroll_->height() - ProfileRow::kHeight - list_spacing);
+			if (measured_profile_height_cap_ >= 0 && next_cap >= measured_profile_height_cap_)
+				return;
+			measured_profile_height_cap_ = next_cap;
+			rebalance_dock_height();
+		});
+	}
 }
 
 Profile *BridgeDock::selected_profile()
@@ -206,6 +398,10 @@ Profile *BridgeDock::selected_profile()
 
 void BridgeDock::show_selected_profile()
 	{
+		// The detail form owns these non-owning field pointers. Drop them before
+		// clear_layout() destroys the old form widgets.
+		rapidapi_quota_fields_.clear();
+		detail_minimum_boundary_ = nullptr;
 		clear_layout(detail_layout_);
 		Profile *profile = selected_profile();
 		if (!profile)
@@ -295,6 +491,7 @@ void BridgeDock::show_selected_profile()
 		footer->addWidget(delete_action, 0, Qt::AlignVCenter);
 		detail_layout_->addLayout(footer);
 		detail_layout_->addStretch();
+		update_detail_viewport_minimum();
 	}
 
 Profile *BridgeDock::find_profile(const QString &id)
@@ -385,10 +582,18 @@ void BridgeDock::set_diagnostic(Profile &profile, const QString &message, bool i
 		tiktok_studio_heartbeat_failed_.remove(profile.id);
 		tiktok_studio_heartbeat_status_.remove(profile.id);
 		tiktok_studio_stale_heartbeat_count_.remove(profile.id);
+	if (profile.dual_layout_enabled) {
+		// Both encoders can have a packet callback. Do not infer the attached
+		// output from the last setup stage: detach both named outputs explicitly.
+		output_signing_.detach(profile.output_name);
+		if (!profile.dual_output_name.isEmpty() && profile.dual_output_name != profile.output_name)
+			output_signing_.detach(profile.dual_output_name);
+	} else {
 		const QString signing_output = profile.frame_signing_output_name.isEmpty()
 			? (profile.frame_signing_uses_main_output ? QString{} : profile.output_name)
 			: profile.frame_signing_output_name;
 		output_signing_.detach(signing_output);
+	}
 		ProfileLiveSession::clear(profile);
 		TokenStore::remove_live_credentials(profile.id);
 		if (ProviderRegistry::uses_local_credentials(profile.provider_id)) {
@@ -636,14 +841,24 @@ void BridgeDock::build_login_step(const Profile &profile)
 					"with each profile to keep them organised.")), group));
 			auto *login = new QPushButton(translated_or("Studio.Login.Button",
 				QStringLiteral("Log in with TikTok QR code")), group);
+			auto *browser_import = new QPushButton(translated_or("Studio.Login.BrowserImport",
+				QStringLiteral("Import existing browser login")), group);
 			login->setEnabled(!rapidapi_key->text().trimmed().isEmpty());
+			browser_import->setEnabled(!rapidapi_key->text().trimmed().isEmpty());
 			connect(rapidapi_key, &QLineEdit::textChanged, login,
 				[login](const QString &value) { login->setEnabled(!value.trimmed().isEmpty()); });
+			connect(rapidapi_key, &QLineEdit::textChanged, browser_import,
+				[browser_import](const QString &value) { browser_import->setEnabled(!value.trimmed().isEmpty()); });
 			connect(login, &QPushButton::clicked, this,
 				[this, profile_id, rapidapi_key] {
 					begin_tiktok_studio_login(profile_id, rapidapi_key->text().trimmed());
 				});
 			layout->addWidget(login);
+			connect(browser_import, &QPushButton::clicked, this,
+				[this, profile_id, rapidapi_key] {
+					begin_tiktok_browser_session_import(profile_id, rapidapi_key->text().trimmed());
+				});
+			layout->addWidget(browser_import);
 			detail_layout_->addWidget(group);
 			return;
 		}

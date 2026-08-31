@@ -1,6 +1,6 @@
 # Platform Support
 
-TikTok Live OBS v0.2.0 publishes archives for Windows, Ubuntu x86_64, and
+TikTok Live OBS v0.2.1 publishes archives for Windows, Ubuntu x86_64, and
 macOS. Every archive is built and tested by the same GitHub Actions workflow.
 
 | Area | Windows x64 | Ubuntu x86_64 | macOS |
@@ -21,7 +21,7 @@ URL and key for a compatible streaming setup.
 
 ## Installation model
 
-There is no installer in v0.2.0. Download the archive matching your operating
+There is no installer in v0.2.1. Download the archive matching your operating
 system, close OBS, and install its plugin files into the appropriate OBS plugin
 location. The archive always includes the module, all locale catalogues, the UI
 assets, and `LICENSE`.

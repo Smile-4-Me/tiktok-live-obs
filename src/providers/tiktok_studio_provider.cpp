@@ -18,6 +18,8 @@ PreparedLive normalize_live(const TikTokStudioLive &source)
 	live.stream_id = source.stream_id;
 	live.server = source.server;
 	live.key = source.key;
+	live.dual_server = source.dual_server;
+	live.dual_key = source.dual_key;
 	return live;
 }
 
@@ -31,6 +33,9 @@ ProviderAccountStatus normalize_account(const TikTokStudioAccountInfo &source)
 	// endpoints are incomplete, the client returns `live_access_unknown` and
 	// leaves the definitive check to LIVE creation.
 	status.live_access_is_confirmed = source.application_status != QStringLiteral("live_access_unknown");
+	status.dual_layout_available = source.dual_layout_available;
+	status.dual_layout_status = source.dual_layout_status;
+	status.rapidapi_quota = source.account.rapidapi_quota;
 	return status;
 }
 
@@ -94,6 +99,7 @@ void TikTokStudioProvider::create_live(const ProviderAccountReference &account, 
 		return;
 	}
 	client_.start_live(credentials, request.title, request.topic_id, request.category_id, request.mature,
+		request.dual_layout,
 		[this, account, completion = std::move(completion)](TikTokStudioLive response, QString error) {
 			QString save_error;
 			if (!save_account(account.account_id, response.account, &save_error)) {

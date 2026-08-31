@@ -4,6 +4,62 @@ All notable changes are documented here. This project follows the spirit of [Kee
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-31
+
+### Added
+
+- Added Dual Layout for eligible RapidAPI/TikTok LIVE Studio accounts. A LIVE
+  created with Dual Layout receives a portrait and a landscape TikTok canvas,
+  each mapped directly to a separately selected Aitum output.
+- Added a clear Dual Layout eligibility notice using TikTok's reported
+  `days_to_reach` progress. The value refreshes with account information and
+  after a LIVE ends.
+- Added account-scoped RapidAPI quota tracking from existing request- and
+  frame-signing response headers. The limit is shown in both account setup and
+  stream setup without spending an additional API request.
+- Added a responsive quota meter: the available fraction fills the field and
+  transitions from green through yellow to red as the remaining quota falls.
+- Added a locale-catalog contract test so every supported OBS language must
+  supply each new LIVE Studio UI string or fall back deliberately.
+- Added a browser-session import adapter seam. It contains no browser-profile
+  collector; a future platform-specific implementation can pass an explicitly
+  user-approved TikTok cookie jar into the existing secure session flow.
+
+### Changed
+
+- RapidAPI/TikTok LIVE Studio, Streamlabs, and Manual profile headings now
+  identify the provider and TikTok username directly beside the profile name.
+- Manual credentials use a direct one-step setup. They do not show the
+  provider-account status step that is meaningful only for remote providers.
+- Profile-list height now adapts to the dock: at least three profiles remain
+  visible; more rows are exposed only after the complete lower configuration
+  area fits, including the delete action.
+- Reworked the RapidAPI and Streamlabs account-status presentation so both use
+  the same account-information refresh action and comparable status wording.
+
+### Fixed
+
+- Clearing a provider profile back to credentials or account status now also
+  clears its linked Aitum output assignment. A stale output can no longer stay
+  visibly attached after LIVE access is denied, a Manual session ends, or an
+  output start fails.
+- Removed the unused direct-native TikTok output choice. The supported path is
+  now a selected Aitum output or manually used provider credentials.
+- Hardened the dock's post-layout measurement so word-wrapped notices cannot
+  cause extra profile rows to hide lower configuration controls.
+- Reused OBS-provided action assets and standardized compact profile controls
+  for better native appearance and theme compatibility.
+
+### Security
+
+- RapidAPI quota telemetry is stored with the existing account-scoped secret
+  metadata and contains only limit, remaining, reset, and observation values.
+  No extra usage request, stream credential, cookie, or frame data is sent for
+  the quota display.
+- The browser-session adapter is intentionally inert until a collector is
+  supplied. It does not discover browser profiles, decrypt browser data, read
+  cookies, or write plaintext data in this release.
+
 ## [0.2.0] - 2026-08-25
 
 ### Highlights

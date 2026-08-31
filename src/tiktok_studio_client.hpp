@@ -32,6 +32,8 @@ struct TikTokStudioAccountInfo {
 	TikTokStudioAccountCredentials account;
 	bool can_go_live = false;
 	QString application_status;
+	bool dual_layout_available = false;
+	QString dual_layout_status;
 };
 
 struct TikTokStudioLive {
@@ -41,6 +43,8 @@ struct TikTokStudioLive {
 	QString owner_user_id;
 	QString server;
 	QString key;
+	QString dual_server;
+	QString dual_key;
 };
 
 struct TikTokStudioEndResult {
@@ -80,7 +84,12 @@ public:
 	void find_continuable_live(TikTokStudioAccountCredentials account, LiveCallback completion);
 	void resume_live(TikTokStudioAccountCredentials account, LiveCallback completion);
 	void start_live(TikTokStudioAccountCredentials account, const QString &title,
-		const QString &hashtag_id, const QString &game_tag_id, bool mature, LiveCallback completion);
+		const QString &hashtag_id, const QString &game_tag_id, bool mature, bool dual_layout,
+		LiveCallback completion);
+	// Validates and persists a caller-supplied, user-approved browser session
+	// after the platform-specific collector has populated cookie_jar. The
+	// collector itself deliberately lives behind a separate adapter hook.
+	void import_browser_session(TikTokStudioAccountCredentials account, AccountCallback completion);
 	void heartbeat(TikTokStudioAccountCredentials account, const QString &room_id,
 		const QString &stream_id, int status, HeartbeatCallback completion);
 	void end_live(TikTokStudioAccountCredentials account, const QString &room_id,

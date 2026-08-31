@@ -7,9 +7,14 @@
 
 #include <curl/curl.h>
 
+#include <QDateTime>
 #include <QJsonDocument>
+#include <QHash>
 #include <QJsonObject>
 #include <QUrl>
+
+#include <initializer_list>
+#include <limits>
 
 namespace {
 
@@ -18,9 +23,27 @@ constexpr qsizetype response_limit = 1024 * 1024;
 struct HttpResult {
 	long status = 0;
 	QByteArray body;
+	QHash<QByteArray, QByteArray> headers;
 	QString error;
 	bool overflow = false;
 };
+
+size_t append_header(char *data, size_t size, size_t count, void *user_data)
+{
+	auto *result = static_cast<HttpResult *>(user_data);
+	if (!result || (count != 0 && size > std::numeric_limits<size_t>::max() / count))
+		return 0;
+	const size_t bytes = size * count;
+	const QByteArray line(data, static_cast<qsizetype>(bytes));
+	const int separator = line.indexOf(':');
+	if (separator > 0) {
+		const QByteArray name = line.left(separator).trimmed().toLower();
+		const QByteArray value = line.mid(separator + 1).trimmed();
+		if (!name.isEmpty() && value.size() <= 4096)
+			result->headers.insert(name, value);
+	}
+	return bytes;
+}
 
 size_t append_response(char *data, size_t size, size_t count, void *user_data)
 {
@@ -86,6 +109,30 @@ QByteArray header_value(const QJsonObject &object, const QString &name)
 	return value.toVariant().toString().trimmed().toUtf8();
 }
 
+qint64 quota_number(const QHash<QByteArray, QByteArray> &headers,
+	std::initializer_list<const char *> names)
+{
+	for (const char *name : names) {
+		bool ok = false;
+		const qint64 value = QString::fromLatin1(headers.value(name)).trimmed().toLongLong(&ok);
+		if (ok && value >= 0)
+			return value;
+	}
+	return -1;
+}
+
+RapidApiQuota quota_from_headers(const QHash<QByteArray, QByteArray> &headers)
+{
+	RapidApiQuota quota;
+	quota.limit = quota_number(headers, {"x-ratelimit-requests-limit", "x-quota-limit"});
+	quota.remaining = quota_number(headers, {"x-ratelimit-requests-remaining", "x-quota-remaining"});
+	quota.reset_epoch_seconds = quota_number(headers,
+		{"x-ratelimit-requests-reset", "x-quota-reset"});
+	if (quota.known())
+		quota.observed_epoch_seconds = QDateTime::currentSecsSinceEpoch();
+	return quota;
+}
+
 } // namespace
 
 TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const HostedSigningServiceConfig &service,
@@ -144,6 +191,8 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const HostedSigningSe
 	curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, 20000L);
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, append_response);
 	curl_easy_setopt(handle, CURLOPT_WRITEDATA, &result);
+	curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, append_header);
+	curl_easy_setopt(handle, CURLOPT_HEADERDATA, &result);
 	const CURLcode code = curl_easy_perform(handle);
 	if (code != CURLE_OK)
 		result.error = result.overflow ? QStringLiteral("RapidAPI returned an oversized response.")
@@ -157,6 +206,7 @@ TikTokRequestSignatureHeaders RapidApiRequestSigner::fetch(const HostedSigningSe
 		return signatures;
 	}
 	signatures = parse_response(result.body, result.status);
+	signatures.quota = quota_from_headers(result.headers);
 	if (!signatures.error.isEmpty())
 		signatures.error.replace(service.api_key, QStringLiteral("<redacted>"), Qt::CaseSensitive);
 	return signatures;

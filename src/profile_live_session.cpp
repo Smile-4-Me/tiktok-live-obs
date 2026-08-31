@@ -8,6 +8,8 @@ namespace ProfileLiveSession {
 void reserve(Profile &profile, const PreparedLive &live)
 {
 	reserve(profile, live.session_id, live.stream_id, live.server, live.key);
+	profile.dual_stream_server = live.dual_server;
+	profile.dual_stream_key = live.dual_key;
 	profile.live_tiktok_username = live.tiktok_username.trimmed();
 }
 
@@ -44,12 +46,16 @@ void clear(Profile &profile)
 	profile.stream_id.clear();
 	profile.stream_server.clear();
 	profile.stream_key.clear();
+	profile.dual_stream_server.clear();
+	profile.dual_stream_key.clear();
 	profile.live_tiktok_username.clear();
 }
 
 void clear_output_assignment(Profile &profile)
 {
 	profile.output_name.clear();
+	profile.dual_layout_enabled = false;
+	profile.dual_output_name.clear();
 	profile.frame_signing_uses_main_output = false;
 	profile.frame_signing_output_name.clear();
 }

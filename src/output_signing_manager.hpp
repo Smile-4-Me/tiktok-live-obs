@@ -25,6 +25,7 @@ class QTimer;
 class OutputSigningManager final : public QObject {
 public:
 	using Completion = std::function<void(bool attached, QString error)>;
+	using QuotaCallback = std::function<void(const RapidApiQuota &quota)>;
 
 	explicit OutputSigningManager(QObject *parent = nullptr);
 	~OutputSigningManager() override;
@@ -33,7 +34,7 @@ public:
 	// attaches the OBS packet callback before the selected output starts. An
 	// empty output name selects OBS' main streaming output.
 	void prepare_and_attach(const QString &output_name, HostedSigningServiceConfig api,
-		SignedSeiConfig signing, Completion completion);
+		SignedSeiConfig signing, Completion completion, QuotaCallback quota_callback = {});
 	void detach(const QString &output_name);
 	void detach_all();
 	[[nodiscard]] bool attached(const QString &output_name) const;
@@ -54,6 +55,7 @@ private:
 
 	QHash<QString, std::shared_ptr<Session>> sessions_;
 	QHash<QString, std::shared_ptr<Session>> pending_;
+	QHash<QString, FrameSignBatch> shared_batches_;
 	QTimer *refresh_timer_ = nullptr;
 	std::vector<std::future<void>> workers_;
 	bool shutting_down_ = false;

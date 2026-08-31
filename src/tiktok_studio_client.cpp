@@ -498,7 +498,7 @@ GameTagsSyncResult fetch_game_tags_sync(TikTokStudioAccountCredentials account)
 	return result;
 }
 
-SignedRequestResult signed_request(CurlSession &session, const TikTokStudioAccountCredentials &account,
+SignedRequestResult signed_request(CurlSession &session, TikTokStudioAccountCredentials &account,
 	const QByteArray &method, const QString &url, const Params &params, const QByteArray &body = {},
 	const QByteArray &content_type = "application/x-www-form-urlencoded; charset=UTF-8",
 	const Headers &extra_headers = {}, long timeout_ms = 20000)
@@ -515,6 +515,17 @@ SignedRequestResult signed_request(CurlSession &session, const TikTokStudioAccou
 	service.base_url = QUrl(account.signer_api_url);
 	service.api_key = account.rapidapi_key;
 	const TikTokRequestSignatureHeaders signatures = RapidApiRequestSigner::fetch(service, input);
+	if (signatures.quota.known()) {
+		if (signatures.quota.limit >= 0)
+			account.rapidapi_quota.limit = signatures.quota.limit;
+		if (signatures.quota.remaining >= 0)
+			account.rapidapi_quota.remaining = signatures.quota.remaining;
+		if (!account.rapidapi_quota.has_calendar_reset())
+			account.rapidapi_quota.reset_epoch_seconds = 0;
+		if (signatures.quota.has_calendar_reset())
+			account.rapidapi_quota.reset_epoch_seconds = signatures.quota.reset_epoch_seconds;
+		account.rapidapi_quota.observed_epoch_seconds = signatures.quota.observed_epoch_seconds;
+	}
 	if (!signatures.valid()) {
 		result.error = signatures.error;
 		return result;
@@ -786,6 +797,8 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 	create_params.push_back({QStringLiteral("live_studio"), QStringLiteral("1")});
 	Params game_params = studio_params(account);
 	game_params.push_back({QStringLiteral("scene"), QStringLiteral("2")});
+	Params dual_params = studio_params(account);
+	dual_params.push_back({QStringLiteral("scene"), QStringLiteral("1")});
 	bool eligibility_checked = false;
 	for (const QString &host : webcast_hosts(account.cookie_jar)) {
 		const SignedRequestResult create = signed_request(session, account, "GET",
@@ -796,6 +809,8 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 			QStringLiteral("https://%1/webcast/game/basic/create_info/").arg(host), game_params);
 		if (!game.error.isEmpty())
 			continue;
+		const SignedRequestResult dual = signed_request(session, account, "GET",
+			QStringLiteral("https://%1/webcast/game/basic/create_info/").arg(host), dual_params);
 		const QString create_error = webcast_error(create.object,
 			QStringLiteral("TikTok LIVE access check"));
 		const QString game_error = webcast_error(game.object,
@@ -813,10 +828,21 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 			continue;
 		const QJsonObject create_data = create.object.value(QStringLiteral("data")).toObject();
 		const QJsonObject game_data = game.object.value(QStringLiteral("data")).toObject();
+		const QJsonObject dual_data = dual.error.isEmpty() &&
+			webcast_error(dual.object, QStringLiteral("TikTok Dual Layout access check")).isEmpty()
+			? dual.object.value(QStringLiteral("data")).toObject() : QJsonObject{};
+		QJsonObject threshold_data;
+		const SignedRequestResult threshold = signed_request(session, account, "GET",
+			QStringLiteral("https://%1/webcast/anchor_tool/threshold/check/").arg(host), studio_params(account));
+		if (threshold.error.isEmpty() &&
+			webcast_error(threshold.object, QStringLiteral("TikTok Dual Layout threshold")).isEmpty())
+			threshold_data = threshold.object.value(QStringLiteral("data")).toObject();
 		const TikTokStudioEligibility eligibility =
-			parse_tiktok_studio_eligibility(create_data, game_data);
+			parse_tiktok_studio_eligibility(create_data, game_data, dual_data, threshold_data);
 		result.can_go_live = eligibility.can_go_live;
 		result.application_status = eligibility.status;
+		result.dual_layout_available = eligibility.dual_layout_available;
+		result.dual_layout_status = eligibility.dual_layout_status;
 		eligibility_checked = true;
 		break;
 	}
@@ -827,6 +853,7 @@ TikTokStudioAccountInfo account_info_sync(TikTokStudioAccountCredentials account
 		result.can_go_live = true;
 		result.application_status = QStringLiteral("live_access_unknown");
 	}
+	result.account = account;
 	result.account.cookie_jar = session.cookies();
 	return result;
 }
@@ -1093,11 +1120,13 @@ ContinuableRoomResult continuable_room_sync(CurlSession &session,
 }
 
 LiveSyncResult prepare_live_room_sync(CurlSession &session, TikTokStudioAccountCredentials account,
-	const QJsonObject &room_payload, const QString &primary_host, bool send_prepare_heartbeat = true)
+	const QJsonObject &room_payload, const QString &primary_host, bool send_prepare_heartbeat = true,
+	bool require_dual_layout = false)
 {
 	LiveSyncResult result;
 	const QJsonObject room = tiktok_studio_room_object(room_payload);
 	const QJsonObject stream_url = room.value(QStringLiteral("stream_url")).toObject();
+	const QJsonObject dual_stream_url = room.value(QStringLiteral("multi_stream_url")).toObject();
 	update_session_cookies(session, &account);
 	result.live.account = account;
 	result.live.room_id = room_id_from(room);
@@ -1105,9 +1134,21 @@ LiveSyncResult prepare_live_room_sync(CurlSession &session, TikTokStudioAccountC
 	result.live.owner_user_id = tiktok_studio_room_owner_id(room);
 	result.error = split_stream_url(stream_url.value(QStringLiteral("rtmp_push_url")).toString(),
 		&result.live.server, &result.live.key);
+	const QString dual_push_url = dual_stream_url.value(QStringLiteral("rtmp_push_url")).toString();
+	if (!dual_push_url.trimmed().isEmpty()) {
+		const QString dual_error = split_stream_url(dual_push_url,
+			&result.live.dual_server, &result.live.dual_key);
+		if (!dual_error.isEmpty())
+			result.error = dual_error;
+	}
 	if (!result.error.isEmpty() || result.live.room_id.isEmpty() || result.live.stream_id.isEmpty()) {
 		if (result.error.isEmpty())
 			result.error = QStringLiteral("TikTok did not return room and stream identifiers.");
+		return result;
+	}
+	if (require_dual_layout && (result.live.dual_server.trimmed().isEmpty() ||
+		result.live.dual_key.trimmed().isEmpty())) {
+		result.error = QStringLiteral("TikTok did not return the second stream URL required for Dual Layout.");
 		return result;
 	}
 	if (result.live.owner_user_id.isEmpty())
@@ -1160,7 +1201,7 @@ LiveSyncResult continuable_live_sync(TikTokStudioAccountCredentials account, boo
 }
 
 LiveSyncResult start_live_sync(TikTokStudioAccountCredentials account, const QString &title,
-	const QString &hashtag_id, const QString &game_tag_id, bool mature)
+	const QString &hashtag_id, const QString &game_tag_id, bool mature, bool dual_layout)
 {
 	LiveSyncResult result;
 	CurlSession session(account.cookie_jar);
@@ -1183,7 +1224,8 @@ LiveSyncResult start_live_sync(TikTokStudioAccountCredentials account, const QSt
 		{QStringLiteral("game_tag_id"), game_tag_id.trimmed().isEmpty() ? QStringLiteral("0") : game_tag_id.trimmed()},
 		{QStringLiteral("game_bitrate_type"), QStringLiteral("high")},
 		{QStringLiteral("screenshot_cover_status"), QStringLiteral("1")},
-		{QStringLiteral("multi_stream_scene"), QStringLiteral("0")}, {QStringLiteral("gift_auth"), QStringLiteral("1")},
+		{QStringLiteral("multi_stream_scene"), dual_layout ? QStringLiteral("1") : QStringLiteral("0")},
+		{QStringLiteral("gift_auth"), QStringLiteral("1")},
 		{QStringLiteral("chat_l2"), QStringLiteral("1")}, {QStringLiteral("star_comment_switch"), QStringLiteral("true")},
 		{QStringLiteral("multi_stream_source"), QStringLiteral("1")},
 		{QStringLiteral("is_group_live_session"), QStringLiteral("false")},
@@ -1203,7 +1245,7 @@ LiveSyncResult start_live_sync(TikTokStudioAccountCredentials account, const QSt
 		if (response_error.isEmpty()) {
 			const QJsonObject room = tiktok_studio_room_object(
 				response.object.value(QStringLiteral("data")).toObject());
-			return prepare_live_room_sync(session, account, room, host);
+			return prepare_live_room_sync(session, account, room, host, true, dual_layout);
 		}
 
 		last_error = response_error;
@@ -1211,7 +1253,7 @@ LiveSyncResult start_live_sync(TikTokStudioAccountCredentials account, const QSt
 		// connection closes. Recover the resulting room before another create.
 		ContinuableRoomResult recovered = continuable_room_sync(session, &account);
 		if (!recovered.room.isEmpty())
-			return prepare_live_room_sync(session, account, recovered.room, recovered.host);
+			return prepare_live_room_sync(session, account, recovered.room, recovered.host, true, dual_layout);
 		if (tiktok_studio_session_requires_login(response_error) ||
 			tiktok_studio_session_requires_login(recovered.error))
 			break;
@@ -1415,7 +1457,8 @@ void TikTokStudioClient::resume_live(TikTokStudioAccountCredentials account,
 }
 
 void TikTokStudioClient::start_live(TikTokStudioAccountCredentials account, const QString &title,
-	const QString &hashtag_id, const QString &game_tag_id, bool mature, LiveCallback completion)
+	const QString &hashtag_id, const QString &game_tag_id, bool mature, bool dual_layout,
+	LiveCallback completion)
 {
 	if (!account.has_login()) {
 		completion({}, QStringLiteral("Sign in to TikTok LIVE Studio before creating a LIVE session."));
@@ -1429,10 +1472,41 @@ void TikTokStudioClient::start_live(TikTokStudioAccountCredentials account, cons
 		completion({}, QStringLiteral("Select a game for the Gaming topic before creating a LIVE session."));
 		return;
 	}
-	run_async(this, [account = std::move(account), title, hashtag_id, game_tag_id, mature]() mutable {
-		return start_live_sync(std::move(account), title, hashtag_id, game_tag_id, mature);
+	run_async(this, [account = std::move(account), title, hashtag_id, game_tag_id, mature, dual_layout]() mutable {
+		return start_live_sync(std::move(account), title, hashtag_id, game_tag_id, mature, dual_layout);
 	}, [completion = std::move(completion)](LiveSyncResult result) mutable {
 		completion(std::move(result.live), std::move(result.error));
+	});
+}
+
+void TikTokStudioClient::import_browser_session(TikTokStudioAccountCredentials account,
+	AccountCallback completion)
+{
+	if (tiktok_session_cookie_header(account.cookie_jar).isEmpty()) {
+		completion({}, QStringLiteral("The browser-session adapter returned no valid TikTok cookies."));
+		return;
+	}
+	run_async(this, [account = std::move(account)]() mutable {
+		QString error;
+		CurlSession session(account.cookie_jar);
+		if (!session.valid()) {
+			error = QStringLiteral("libcurl could not initialize the TikTok browser-session import.");
+			return qMakePair(TikTokStudioAccountInfo{}, std::move(error));
+		}
+		if (!account.has_device())
+			error = register_device(session, &account);
+		if (!error.isEmpty()) {
+			TikTokStudioAccountInfo failed;
+			failed.account = std::move(account);
+			return qMakePair(std::move(failed), std::move(error));
+		}
+		const QByteArray cookies = session.cookies();
+		if (!cookies.isEmpty())
+			account.cookie_jar = cookies;
+		TikTokStudioAccountInfo info = account_info_sync(std::move(account), &error);
+		return qMakePair(std::move(info), std::move(error));
+	}, [completion = std::move(completion)](QPair<TikTokStudioAccountInfo, QString> result) mutable {
+		completion(std::move(result.first), std::move(result.second));
 	});
 }
 

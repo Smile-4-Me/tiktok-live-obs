@@ -29,17 +29,39 @@ The reusable findings are limited to general software architecture:
 | --- | --- |
 | Upstream repository | <https://github.com/Loukious/TikTokStreamKeyGenerator> |
 | Inspected branch | `main` |
-| Pinned revision | `b259b09940b7fc867f9eddb7987030d7ea0772a1` |
-| Revision date | 2026-08-09T09:43:08+01:00 |
-| Research date | 2026-08-21 |
-| Local read-only research checkout | `research/Loukious-TikTokStreamKeyGenerator-20260821` (not part of this repository) |
-| License finding | No license file was present in the inspected repository root. Do not copy source code from it without obtaining permission or confirming a license. |
+| Pinned revision | `1b820a7bdf11731fd870047f3e3807ca06b69327` (`v2.1.2`) |
+| Revision date | 2026-08-30T15:29:38+01:00 |
+| Research date | 2026-08-31 |
+| Local read-only research checkout | `work/upstream-TikTokStreamKeyGenerator` (not part of this repository) |
+| License finding | No license file was present in the inspected repository root. The project owner reports permission from the upstream author for this project's use; retain attribution and do not treat that report as a public upstream license. |
 
 Git confirmed that `Libs/device_gen.py`, `Libs/log_encrypt_codec.py`,
 `Libs/signers.py`, and `TiktokStreamKeyGenerator.py` are tracked at that public
 revision; local capture/sample files were untracked and excluded. The plugin
 ports only the public device-registration envelope and Passport/QR/session
 formatting. No upstream request- or frame-signing algorithm is imported.
+
+## 2026-08-30 upstream delta and project disposition
+
+The newer upstream revisions `v2.1.0` through `v2.1.2` added Dual Layout,
+refined its eligibility interpretation, documented a manual exported-cookie
+login option, and displayed RapidAPI quota data. The current plugin release
+adopts only the following product-level behavior:
+
+| Upstream update | TikTok Live OBS disposition |
+| --- | --- |
+| Dual portrait/landscape LIVE and account eligibility | Adopted through the existing provider and two selected Aitum outputs. There is no FFmpeg relay, local RTMP listener, or replacement OBS output path. |
+| `days_to_reach` value | Adopted as a localized, singular/plural user notice for a locked Dual Layout option. It is refreshed with account data and at the end of a LIVE. |
+| RapidAPI quota headers | Adopted as account-scoped quota state and a status meter. The value is derived from normal RapidAPI responses and never causes a second usage request. |
+| Exported cookie-login instructions | Not shipped as an end-user workflow. The plugin contains only an explicitly consented, inert adapter boundary for a caller-supplied Netscape cookie jar; it neither finds browser profiles nor decrypts or reads browser cookies. |
+
+The upstream repository does not provide a standalone official TikTok OAuth
+client/redirect implementation usable by this plugin. A browser one-tap flow
+tested for this project selected the already signed-in account but was then
+rejected by TikTok with `error_code=4` / `Incorrect parameters`. A supported
+in-plugin loopback callback would require this project's own TikTok client
+registration and an allow-listed redirect URI; a helper executable or batch
+file would not solve that server-side requirement.
 
 ## Executive summary
 
