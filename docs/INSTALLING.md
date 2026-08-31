@@ -1,7 +1,7 @@
 # Installing TikTok Live OBS
 
-TikTok Live OBS v0.2.1 is distributed as platform archives. It does not modify
-OBS profiles, scene collections, Aitum configuration, or any other plugin.
+TikTok Live OBS v0.2.1 release archives do not modify OBS profiles, scene
+collections, Aitum configuration, or any other plugin.
 
 ## Before you start
 

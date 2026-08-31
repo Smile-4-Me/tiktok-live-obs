@@ -1,7 +1,8 @@
 # Platform Support
 
-TikTok Live OBS v0.2.1 publishes archives for Windows, Ubuntu x86_64, and
-macOS. Every archive is built and tested by the same GitHub Actions workflow.
+The v0.2.1 source tree is configured to package Windows, Ubuntu x86_64, and
+macOS archives. Every release archive is built and tested by the same GitHub
+Actions workflow.
 
 | Area | Windows x64 | Ubuntu x86_64 | macOS |
 | --- | --- | --- | --- |
